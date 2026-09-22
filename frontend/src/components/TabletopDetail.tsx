@@ -105,9 +105,14 @@ function TabletopDetailContent({ tabletopId }: { tabletopId: string }) {
           <h1 className="text-2xl font-bold tracking-tight">{tabletop.name}</h1>
           <p className="text-text-muted">{rulebookLabel}</p>
         </div>
-        <Link href={`/tabletops/${tabletopId}/sheets`}>
-          <Button variant="secondary">Fichas</Button>
-        </Link>
+        <div className="flex gap-3">
+          <Link href={`/tabletops/${tabletopId}/vtt`}>
+            <Button variant="secondary">Cena</Button>
+          </Link>
+          <Link href={`/tabletops/${tabletopId}/sheets`}>
+            <Button variant="secondary">Fichas</Button>
+          </Link>
+        </div>
       </div>
 
       <div>

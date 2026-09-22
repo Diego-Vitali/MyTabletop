@@ -8,6 +8,7 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/.pytest_cache/
 backend/*.egg-info/
+backend/uploads/
 
 # frontend (Next.js) — see also frontend/.gitignore
 frontend/node_modules/

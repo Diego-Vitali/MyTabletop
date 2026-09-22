@@ -7,12 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 MyTabletop is a self-hosted Virtual Tabletop RPG system (a free alternative
 to Foundry VTT). Full vision and roadmap live in [README.md](README.md).
 **Phase 1** (users, JWT auth, tabletops with DM/Player roles) is done.
-**Phase 2** (character/NPC sheets) is being built incrementally, one rules
-concept at a time, on explicit direction from the project owner — don't
-assume the next slice (NEX, skills, derived stats, rituals) without asking;
-see "Sheet architecture" below for what exists today. Phases 3-4 (the
-real-time VTT map/token canvas over WebSocket, and the Obsidian-style
-Markdown GM shield) do not exist yet.
+**Phase 2** (character/NPC sheets) and **Phase 3** (the VTT) are both being
+built incrementally and interleaved, one concept at a time, on explicit
+direction from the project owner — don't assume the next slice (sheets:
+NEX, skills, derived stats, rituals; VTT: tokens, real-time sync) without
+asking. See "Sheet architecture" and "Scene/VTT architecture" below for what
+exists today. Phase 4 (the Obsidian-style Markdown GM shield) does not exist
+yet. Tokens-on-a-scene (the interactive VTT canvas) also don't exist yet —
+today's VTT slice is just the DM-swappable background image.
 
 Monorepo layout: `backend/` (FastAPI) and `frontend/` (Next.js), deployed
 together via `docker-compose.yml` at the repo root.
@@ -38,7 +40,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 uvicorn app.main:app --reload   # requires a local MongoDB, see MONGO_URI in .env
 pytest                          # run full suite
-pytest tests/test_sheets.py::test_dm_can_create_npc_sheet  # single test
+pytest tests/test_scenes.py::test_dm_can_switch_active_scene  # single test
 ```
 
 Tests run against `mongomock-motor` (an in-memory Mongo mock), not a real
@@ -125,6 +127,43 @@ shared source of truth between backend and frontend yet). Stat blocks render
 via `src/components/AttributesEditor.tsx`, which is meant to be the reusable
 shape for *any* future stat display (resources, skills, NEX), not just
 attributes — extend it rather than building a parallel stat-tile component.
+
+### Scene/VTT architecture (Phase 3, in progress)
+
+Only the background-image piece exists so far — no tokens, no canvas
+interaction, no WebSocket sync. `app/models/scene.py` (`Scene`) holds
+`tabletop_id`, `name`, `image_path` (a filename, not a path — see below),
+`created_by`, `created_at`. `Tabletop.active_scene_id` (nullable) points at
+whichever `Scene` is currently "live" for that table; there's no cap on how
+many `Scene`s a tabletop can accumulate, they're a swappable library.
+
+Image files themselves live on **disk**, not in Mongo (`app/core/storage.py`,
+`UPLOAD_DIR` = `<repo>/backend/uploads/`, a Docker volume in
+`docker-compose.yml` — `uploads_data:/app/uploads` — so they survive
+container recreation). `save_scene_image` validates content-type against an
+allowlist (`ALLOWED_IMAGE_TYPES`: PNG/JPEG/WEBP/GIF) and a 15MB size cap,
+then writes it under a random `uuid4` filename (never trust/reuse the
+uploaded filename). Images are served back by mounting `StaticFiles` at
+`/uploads` in `app/main.py` — `Scene.image_path` is just the filename;
+`ScenePublic.image_url` is the browsable path (`/uploads/{filename}`), and
+the frontend prepends `API_URL` to it (see `SceneBoard.tsx`) since it's a
+relative path from the backend's own origin, not the frontend's.
+
+Permissions mirror sheets: only a DM can upload/activate/delete a scene
+(`require_dm`); any member can view the active one. Uploading a scene
+immediately makes it active (`scene_service.create_scene`); switching
+between previously-uploaded scenes is a separate
+`PATCH .../scenes/{id}/activate` call. Deleting the currently-active scene
+clears `Tabletop.active_scene_id` back to `None` rather than leaving it
+dangling — `scene_service.delete_scene` handles both the DB row and the file
+on disk together, keep them paired if you touch this.
+
+The upload endpoint is `multipart/form-data` (`Form`/`File` params, not a
+Pydantic body) — this is the one place in the API that isn't JSON in/out;
+`requires python-multipart` (in `pyproject.toml`) to parse it. On the
+frontend, `api.upload()` in `src/lib/api.ts` exists specifically to send a
+`FormData` body without the default `Content-Type: application/json` header
+`request()` normally adds (fetch needs to set its own multipart boundary).
 
 ## Frontend architecture
 

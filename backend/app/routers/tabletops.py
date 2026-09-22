@@ -6,7 +6,6 @@ from app.core.deps import (
     require_dm,
     require_member,
 )
-from app.models.tabletop import Tabletop
 from app.models.user import User
 from app.schemas.tabletop import MemberAdd, MemberRoleUpdate, TabletopCreate, TabletopPublic
 from app.services.tabletop_service import (
@@ -19,16 +18,7 @@ from app.services.tabletop_service import (
 
 router = APIRouter(prefix="/tabletops", tags=["tabletops"])
 
-
-def _to_public(tabletop: Tabletop) -> TabletopPublic:
-    return TabletopPublic(
-        id=str(tabletop.id),
-        name=tabletop.name,
-        created_by=tabletop.created_by,
-        rulebook=tabletop.rulebook,
-        members=tabletop.members,
-        created_at=tabletop.created_at,
-    )
+_to_public = TabletopPublic.from_tabletop
 
 
 @router.post("", response_model=TabletopPublic, status_code=201)

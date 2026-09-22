@@ -60,7 +60,9 @@ npm run dev
       genérico de ficha (Personagem/NPC) + atributos de Ordem Paranormal
       (FOR/AGI/INT/VIG/PRE) já implementados. Ainda faltam NEX, perícias,
       stats derivados (PV/PE/Sanidade/Defesa) e rituais.
-- [ ] **Fase 3 — VTT:** mapas, tokens e sincronização em tempo real via
-      WebSocket entre todos os conectados na mesma mesa.
+- [ ] **Fase 3 — VTT** (em andamento, construída aos poucos): upload de
+      imagem de fundo (Cena) pelo Mestre, com biblioteca de cenas salvas
+      para trocar entre elas. Ainda faltam tokens e sincronização em tempo
+      real via WebSocket entre todos os conectados na mesma mesa.
 - [ ] **Fase 4 — Escudo do Mestre:** notas em Markdown com grafos e links
       entre arquivos, ao estilo Obsidian.

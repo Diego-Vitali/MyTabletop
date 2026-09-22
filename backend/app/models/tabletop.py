@@ -17,6 +17,7 @@ class Tabletop(Document):
     created_by: str
     rulebook: str
     members: list[TabletopMember] = []
+    active_scene_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:

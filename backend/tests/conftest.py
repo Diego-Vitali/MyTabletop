@@ -5,9 +5,18 @@ from httpx import ASGITransport, AsyncClient
 from mongomock_motor import AsyncMongoMockClient
 
 from app.main import app
+from app.models.scene import Scene
 from app.models.sheet import Sheet
 from app.models.tabletop import Tabletop
 from app.models.user import User
+
+
+@pytest.fixture(autouse=True)
+def isolated_uploads_dir(tmp_path, monkeypatch):
+    """Scene image uploads go to a throwaway temp dir instead of backend/uploads/."""
+    import app.core.storage as storage
+
+    monkeypatch.setattr(storage, "UPLOAD_DIR", tmp_path)
 
 
 @pytest_asyncio.fixture
@@ -15,7 +24,7 @@ async def client():
     mock_client = AsyncMongoMockClient()
     await init_beanie(
         database=mock_client["mytabletop_test"],
-        document_models=[User, Tabletop, Sheet],
+        document_models=[User, Tabletop, Sheet, Scene],
     )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
