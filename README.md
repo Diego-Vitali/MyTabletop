@@ -21,9 +21,13 @@ cp .env.example .env
 docker compose up --build
 ```
 
-- Backend: http://localhost:8000 (docs em `/docs`)
+- Backend: http://localhost:8042 (docs em `/docs`)
 - Frontend: http://localhost:3000
 - Mongo: `localhost:27017`
+
+As portas expostas no host podem ser trocadas via `BACKEND_PORT`,
+`FRONTEND_PORT` e `MONGO_PORT` no `.env`, caso alguma já esteja em uso na
+sua máquina.
 
 ## Desenvolvimento sem Docker
 
