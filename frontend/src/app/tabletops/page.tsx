@@ -7,6 +7,7 @@ import type { TabletopPublic } from "@/lib/types";
 import { RULEBOOKS } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
 import { TabletopCard } from "@/components/TabletopCard";
+import { Button, Card, FieldError, Input, Select } from "@/components/ui";
 
 function TabletopsPageContent() {
   const { token, user, refreshUser } = useAuth();
@@ -60,13 +61,13 @@ function TabletopsPageContent() {
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-10">
       <div>
-        <h1 className="mb-4 text-xl font-semibold">Minhas mesas</h1>
+        <h1 className="mb-4 text-xl font-bold tracking-tight">Minhas mesas</h1>
         {loading ? (
-          <p className="text-neutral-400">Carregando...</p>
+          <p className="text-text-muted">Carregando...</p>
         ) : tabletops.length === 0 ? (
-          <p className="text-neutral-400">Você ainda não participa de nenhuma mesa.</p>
+          <p className="text-text-muted">Você ainda não participa de nenhuma mesa.</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {tabletops.map((t) => {
@@ -77,35 +78,26 @@ function TabletopsPageContent() {
         )}
       </div>
 
-      <form onSubmit={onCreate} className="flex max-w-sm flex-col gap-3">
-        <h2 className="font-medium">Criar nova mesa</h2>
-        <input
-          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+      <Card as="form" onSubmit={onCreate} className="flex max-w-sm flex-col gap-4">
+        <h2 className="font-bold">Criar nova mesa</h2>
+        <Input
           placeholder="Nome da mesa"
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
         />
-        <select
-          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-          value={rulebook}
-          onChange={(e) => setRulebook(e.target.value)}
-        >
+        <Select value={rulebook} onChange={(e) => setRulebook(e.target.value)}>
           {RULEBOOKS.map((r) => (
             <option key={r.value} value={r.value}>
               {r.label}
             </option>
           ))}
-        </select>
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-fit rounded bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-50"
-        >
+        </Select>
+        <FieldError>{error}</FieldError>
+        <Button type="submit" disabled={submitting}>
           {submitting ? "Criando..." : "Criar mesa"}
-        </button>
-      </form>
+        </Button>
+      </Card>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { TabletopPublic } from "@/lib/types";
 import { RULEBOOKS } from "@/lib/types";
+import { Badge, Card } from "@/components/ui";
 
 export function TabletopCard({
   tabletop,
@@ -13,23 +14,17 @@ export function TabletopCard({
     RULEBOOKS.find((r) => r.value === tabletop.rulebook)?.label ?? tabletop.rulebook;
 
   return (
-    <Link
-      href={`/tabletops/${tabletop.id}`}
-      className="flex flex-col gap-1 rounded border border-neutral-800 p-4 hover:border-neutral-600"
-    >
-      <div className="flex items-center justify-between">
-        <span className="font-medium">{tabletop.name}</span>
-        {myRole && (
-          <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs uppercase text-neutral-300">
-            {myRole}
-          </span>
-        )}
-      </div>
-      <span className="text-sm text-neutral-400">{rulebookLabel}</span>
-      <span className="text-xs text-neutral-500">
-        {tabletop.members.length}{" "}
-        {tabletop.members.length === 1 ? "membro" : "membros"}
-      </span>
+    <Link href={`/tabletops/${tabletop.id}`} className="group block">
+      <Card className="flex flex-col gap-2.5 transition group-hover:border-border">
+        <div className="flex items-start justify-between gap-3">
+          <span className="font-semibold">{tabletop.name}</span>
+          {myRole && <Badge variant={myRole === "dm" ? "accent" : "neutral"}>{myRole}</Badge>}
+        </div>
+        <span className="text-sm text-text-muted">{rulebookLabel}</span>
+        <span className="font-mono text-xs text-text-faint">
+          {tabletop.members.length} {tabletop.members.length === 1 ? "membro" : "membros"}
+        </span>
+      </Card>
     </Link>
   );
 }

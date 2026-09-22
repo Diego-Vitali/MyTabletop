@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api";
 import type { TabletopPublic, Role } from "@/lib/types";
 import { RULEBOOKS } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
+import { Badge, Button, Card, FieldError, Input, Select } from "@/components/ui";
 
 function TabletopDetailContent({ tabletopId }: { tabletopId: string }) {
   const { token, user } = useAuth();
@@ -89,77 +91,77 @@ function TabletopDetailContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
-  if (loading) return <p className="text-neutral-400">Carregando...</p>;
-  if (loadError) return <p className="text-red-400">{loadError}</p>;
+  if (loading) return <p className="text-text-muted">Carregando...</p>;
+  if (loadError) return <p className="text-danger">{loadError}</p>;
   if (!tabletop) return null;
 
   const rulebookLabel =
     RULEBOOKS.find((r) => r.value === tabletop.rulebook)?.label ?? tabletop.rulebook;
 
   return (
-    <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-2xl font-semibold">{tabletop.name}</h1>
-        <p className="text-neutral-400">{rulebookLabel}</p>
+    <div className="flex flex-col gap-10">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{tabletop.name}</h1>
+          <p className="text-text-muted">{rulebookLabel}</p>
+        </div>
+        <Link href={`/tabletops/${tabletopId}/sheets`}>
+          <Button variant="secondary">Fichas</Button>
+        </Link>
       </div>
 
       <div>
-        <h2 className="mb-3 font-medium">Membros</h2>
+        <h2 className="mb-3 font-bold">Membros</h2>
         <ul className="flex flex-col gap-2">
           {tabletop.members.map((m) => (
-            <li
-              key={m.user_id}
-              className="flex items-center justify-between rounded border border-neutral-800 px-3 py-2"
-            >
-              <span>
-                {m.username}{" "}
-                <span className="text-xs uppercase text-neutral-400">({m.role})</span>
-              </span>
-              {iAmDm && (
-                <div className="flex gap-2 text-sm">
-                  <button
-                    className="underline"
-                    onClick={() => changeRole(m.user_id, m.role === "dm" ? "player" : "dm")}
-                  >
-                    {m.role === "dm" ? "Rebaixar a player" : "Promover a DM"}
-                  </button>
-                  <button className="text-red-400 underline" onClick={() => removeMember(m.user_id)}>
-                    Remover
-                  </button>
-                </div>
-              )}
+            <li key={m.user_id}>
+              <Card className="flex items-center justify-between gap-3 py-3">
+                <span className="flex items-center gap-2.5">
+                  {m.username}
+                  <Badge variant={m.role === "dm" ? "accent" : "neutral"}>{m.role}</Badge>
+                </span>
+                {iAmDm && (
+                  <div className="flex gap-4 text-sm">
+                    <button
+                      className="text-text-muted transition hover:text-text"
+                      onClick={() => changeRole(m.user_id, m.role === "dm" ? "player" : "dm")}
+                    >
+                      {m.role === "dm" ? "Rebaixar a player" : "Promover a DM"}
+                    </button>
+                    <button
+                      className="text-danger transition hover:text-danger/80"
+                      onClick={() => removeMember(m.user_id)}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                )}
+              </Card>
             </li>
           ))}
         </ul>
-        {actionError && <p className="mt-2 text-sm text-red-400">{actionError}</p>}
+        <div className="mt-2">
+          <FieldError>{actionError}</FieldError>
+        </div>
       </div>
 
       {iAmDm && (
-        <form onSubmit={onAddMember} className="flex max-w-sm flex-col gap-3">
-          <h2 className="font-medium">Adicionar membro</h2>
-          <input
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
+        <Card as="form" onSubmit={onAddMember} className="flex max-w-sm flex-col gap-4">
+          <h2 className="font-bold">Adicionar membro</h2>
+          <Input
             placeholder="Usuário ou email"
             value={newMember}
             onChange={(e) => setNewMember(e.target.value)}
             required
           />
-          <select
-            className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-            value={newMemberRole}
-            onChange={(e) => setNewMemberRole(e.target.value as Role)}
-          >
+          <Select value={newMemberRole} onChange={(e) => setNewMemberRole(e.target.value as Role)}>
             <option value="player">Player</option>
             <option value="dm">DM</option>
-          </select>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-fit rounded bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-50"
-          >
+          </Select>
+          <Button type="submit" disabled={submitting}>
             {submitting ? "Adicionando..." : "Adicionar"}
-          </button>
-        </form>
+          </Button>
+        </Card>
       )}
     </div>
   );

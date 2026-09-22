@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
+import { Button, Card, FieldError, Input } from "@/components/ui";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -30,48 +31,43 @@ export default function RegisterPage() {
   };
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto flex max-w-sm flex-col gap-4">
-      <h1 className="text-xl font-semibold">Criar conta</h1>
-      <input
-        className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-        placeholder="Usuário"
-        value={username}
-        onChange={(e) => setUsername(e.target.value)}
-        minLength={3}
-        maxLength={32}
-        required
-      />
-      <input
-        className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-        placeholder="Email"
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        required
-      />
-      <input
-        className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-        placeholder="Senha (mín. 8 caracteres)"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        minLength={8}
-        required
-      />
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="rounded bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-50"
-      >
-        {submitting ? "Criando..." : "Criar conta"}
-      </button>
-      <p className="text-sm text-neutral-400">
+    <Card className="mx-auto flex max-w-sm flex-col gap-5">
+      <h1 className="text-xl font-bold tracking-tight">Criar conta</h1>
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <Input
+          placeholder="Usuário"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          minLength={3}
+          maxLength={32}
+          required
+        />
+        <Input
+          placeholder="Email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+        <Input
+          placeholder="Senha (mín. 8 caracteres)"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          minLength={8}
+          required
+        />
+        <FieldError>{error}</FieldError>
+        <Button type="submit" disabled={submitting} className="w-full justify-center">
+          {submitting ? "Criando..." : "Criar conta"}
+        </Button>
+      </form>
+      <p className="text-sm text-text-muted">
         Já tem conta?{" "}
-        <Link href="/login" className="underline">
+        <Link href="/login" className="font-semibold text-accent hover:underline">
           Entrar
         </Link>
       </p>
-    </form>
+    </Card>
   );
 }

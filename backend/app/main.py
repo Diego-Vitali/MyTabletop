@@ -6,9 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pymongo import AsyncMongoClient
 
 from app.core.config import settings
+from app.models.sheet import Sheet
 from app.models.tabletop import Tabletop
 from app.models.user import User
-from app.routers import auth, tabletops, users
+from app.routers import auth, sheets, tabletops, users
 
 
 @asynccontextmanager
@@ -16,7 +17,7 @@ async def lifespan(app: FastAPI):
     client = AsyncMongoClient(settings.mongo_uri)
     await init_beanie(
         database=client[settings.mongo_db_name],
-        document_models=[User, Tabletop],
+        document_models=[User, Tabletop, Sheet],
     )
     yield
     await client.close()
@@ -34,6 +35,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(tabletops.router)
+app.include_router(sheets.router)
 
 
 @app.get("/health")

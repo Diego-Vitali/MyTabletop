@@ -1,26 +1,70 @@
 @import "tailwindcss";
 
+/*
+  MyTabletop — identidade "Sinal": dourado quente sobre azul-marinho profundo.
+  Visual deliberadamente noturno e único (não segue o tema claro/escuro do
+  sistema) — ver .claude/skills/mytabletop-visual-identity/SKILL.md.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #01141c;
+  --surface: #022b3c; /* Deep Space Blue */
+  --surface-2: #0c3547;
+  --border: #14425a;
+  --border-soft: #0c3547;
+
+  --text: #edf3f6;
+  --text-muted: #8ca3af;
+  --text-faint: #5e7986;
+
+  --accent: #f3c647; /* Tuscan Sun */
+  --accent-strong: #ffe481; /* Jasmine */
+  --accent-soft: rgba(243, 198, 71, 0.14);
+  --on-accent: #01141c;
+
+  --rare: #6b7fd7; /* Glaucous — usado com moderação (ex: NEX) */
+  --ok: #57b98a;
+  --danger: #e8695b;
+
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 9px;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-soft: var(--border-soft);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-faint: var(--text-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+
+  --color-rare: var(--rare);
+  --color-ok: var(--ok);
+  --color-danger: var(--danger);
+
+  --radius-lg: var(--radius-lg);
+  --radius-md: var(--radius-md);
+  --radius-sm: var(--radius-sm);
+
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-data);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
 }

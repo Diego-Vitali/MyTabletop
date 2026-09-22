@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
+import { Button, Card, FieldError, Input } from "@/components/ui";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -29,37 +30,33 @@ export default function LoginPage() {
   };
 
   return (
-    <form onSubmit={onSubmit} className="mx-auto flex max-w-sm flex-col gap-4">
-      <h1 className="text-xl font-semibold">Entrar</h1>
-      <input
-        className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-        placeholder="Usuário ou email"
-        value={usernameOrEmail}
-        onChange={(e) => setUsernameOrEmail(e.target.value)}
-        required
-      />
-      <input
-        className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2"
-        placeholder="Senha"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        required
-      />
-      {error && <p className="text-sm text-red-400">{error}</p>}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="rounded bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-900 disabled:opacity-50"
-      >
-        {submitting ? "Entrando..." : "Entrar"}
-      </button>
-      <p className="text-sm text-neutral-400">
+    <Card className="mx-auto flex max-w-sm flex-col gap-5">
+      <h1 className="text-xl font-bold tracking-tight">Entrar</h1>
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
+        <Input
+          placeholder="Usuário ou email"
+          value={usernameOrEmail}
+          onChange={(e) => setUsernameOrEmail(e.target.value)}
+          required
+        />
+        <Input
+          placeholder="Senha"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+        <FieldError>{error}</FieldError>
+        <Button type="submit" disabled={submitting} className="w-full justify-center">
+          {submitting ? "Entrando..." : "Entrar"}
+        </Button>
+      </form>
+      <p className="text-sm text-text-muted">
         Não tem conta?{" "}
-        <Link href="/register" className="underline">
+        <Link href="/register" className="font-semibold text-accent hover:underline">
           Cadastre-se
         </Link>
       </p>
-    </form>
+    </Card>
   );
 }

@@ -56,8 +56,10 @@ npm run dev
 
 - [x] **Fase 1 — Fundação:** cadastro de usuários, autenticação JWT, CRUD de
       mesas (tabletops) com papéis DM/Player.
-- [ ] **Fase 2 — Fichas:** fichas de Personagem e NPC para Ordem Paranormal
-      RPG (Clássico), com suporte para outros livros de regras no futuro.
+- [ ] **Fase 2 — Fichas** (em andamento, construída aos poucos): esqueleto
+      genérico de ficha (Personagem/NPC) + atributos de Ordem Paranormal
+      (FOR/AGI/INT/VIG/PRE) já implementados. Ainda faltam NEX, perícias,
+      stats derivados (PV/PE/Sanidade/Defesa) e rituais.
 - [ ] **Fase 3 — VTT:** mapas, tokens e sincronização em tempo real via
       WebSocket entre todos os conectados na mesma mesa.
 - [ ] **Fase 4 — Escudo do Mestre:** notas em Markdown com grafos e links

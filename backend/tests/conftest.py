@@ -5,6 +5,7 @@ from httpx import ASGITransport, AsyncClient
 from mongomock_motor import AsyncMongoMockClient
 
 from app.main import app
+from app.models.sheet import Sheet
 from app.models.tabletop import Tabletop
 from app.models.user import User
 
@@ -14,7 +15,7 @@ async def client():
     mock_client = AsyncMongoMockClient()
     await init_beanie(
         database=mock_client["mytabletop_test"],
-        document_models=[User, Tabletop],
+        document_models=[User, Tabletop, Sheet],
     )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
