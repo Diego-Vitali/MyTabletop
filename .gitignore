@@ -1,0 +1,14 @@
+# env files
+.env
+.env.local
+
+# backend (Python)
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/*.egg-info/
+
+# frontend (Next.js) — see also frontend/.gitignore
+frontend/node_modules/
+frontend/.next/
