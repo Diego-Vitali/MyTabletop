@@ -254,6 +254,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   const onAddToken = async (e: FormEvent) => {
     e.preventDefault();
+    if (!backgroundUrl) {
+      setTokenUploadError("Defina uma cena antes de adicionar tokens");
+      return;
+    }
     const file = tokenFileRef.current?.files?.[0];
     if (!file || !containerRef.current) {
       setTokenUploadError("Escolha uma imagem");
@@ -311,15 +315,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
       >
-        {backgroundUrl ? (
-          <div
-            className="absolute left-0 top-0"
-            style={{
-              transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
-              transformOrigin: "0 0",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+        <div
+          className="absolute left-0 top-0"
+          style={{
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
+            transformOrigin: "0 0",
+          }}
+        >
+          {backgroundUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               key={backgroundUrl}
               src={`${API_URL}${backgroundUrl}`}
@@ -328,45 +332,46 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               onLoad={onImageLoad}
               className="pointer-events-none max-w-none select-none"
             />
-            {tokens.map((t) => (
-              <div
-                key={t.id}
-                onPointerDown={(e) => onTokenPointerDown(e, t)}
-                onPointerMove={onTokenPointerMove}
-                onPointerUp={onTokenPointerUp}
-                className="group absolute"
-                style={{
-                  left: t.x - TOKEN_SIZE / 2,
-                  top: t.y - TOKEN_SIZE / 2,
-                  width: TOKEN_SIZE,
-                  height: TOKEN_SIZE,
-                  touchAction: "none",
-                  cursor: canMoveToken(t) ? "grab" : "default",
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`${API_URL}${t.image_url}`}
-                  alt="Token"
-                  draggable={false}
-                  className="h-full w-full select-none rounded-full border-2 border-border-soft object-cover shadow-lg"
-                />
-                {canMoveToken(t) && (
-                  <button
-                    type="button"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => deleteToken(t)}
-                    className="absolute -right-1 -top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-danger text-[10px] font-bold text-on-accent group-hover:flex"
-                    title="Remover token"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-text-muted">
+          )}
+          {tokens.map((t) => (
+            <div
+              key={t.id}
+              onPointerDown={(e) => onTokenPointerDown(e, t)}
+              onPointerMove={onTokenPointerMove}
+              onPointerUp={onTokenPointerUp}
+              className="group absolute"
+              style={{
+                left: t.x - TOKEN_SIZE / 2,
+                top: t.y - TOKEN_SIZE / 2,
+                width: TOKEN_SIZE,
+                height: TOKEN_SIZE,
+                touchAction: "none",
+                cursor: canMoveToken(t) ? "grab" : "default",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`${API_URL}${t.image_url}`}
+                alt="Token"
+                draggable={false}
+                className="h-full w-full select-none rounded-full border-2 border-border-soft object-cover shadow-lg"
+              />
+              {canMoveToken(t) && (
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => deleteToken(t)}
+                  className="absolute -right-1 -top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-danger text-[10px] font-bold text-on-accent group-hover:flex"
+                  title="Remover token"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        {!backgroundUrl && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-text-muted">
             Nenhuma cena definida ainda.
           </div>
         )}
@@ -457,8 +462,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           </ToolbarIconButton>
         )}
         <ToolbarIconButton
-          title="Adicionar token"
+          title={backgroundUrl ? "Adicionar token" : "Defina uma cena antes de adicionar tokens"}
           active={openPanel === "token"}
+          disabled={!backgroundUrl}
           onClick={() => togglePanel("token")}
         >
           <Shapes size={18} />
