@@ -88,3 +88,21 @@ export function FieldError({ children }: { children?: string | null }) {
   if (!children) return null;
   return <p className="text-sm text-danger">{children}</p>;
 }
+
+/** Icon-only button for a VTT-style floating toolbar (see VttView). */
+export const ToolbarIconButton = forwardRef<
+  HTMLButtonElement,
+  ButtonHTMLAttributes<HTMLButtonElement> & { active?: boolean }
+>(({ active = false, className = "", ...props }, ref) => (
+  <button
+    ref={ref}
+    type="button"
+    className={`flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-sm transition disabled:cursor-not-allowed disabled:opacity-40 ${
+      active
+        ? "bg-accent-soft text-accent-strong"
+        : "text-text-muted hover:bg-surface-2 hover:text-text"
+    } ${className}`}
+    {...props}
+  />
+));
+ToolbarIconButton.displayName = "ToolbarIconButton";

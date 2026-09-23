@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState, type FormEvent, type SyntheticEvent } from "react";
 import Link from "next/link";
+import { DoorOpen, History as HistoryIcon, ImagePlus, Shapes, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError, API_URL, WS_URL } from "@/lib/api";
 import type { MapHistoryEntryPublic, TabletopPublic, TokenPublic } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Button, FieldError } from "@/components/ui";
+import { Badge, Button, FieldError, ToolbarIconButton } from "@/components/ui";
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
@@ -14,6 +15,7 @@ const ZOOM_STEP = 1.1;
 const TOKEN_SIZE = 64;
 
 type Transform = { x: number; y: number; scale: number };
+type PanelId = "members" | "history" | "scene" | "token";
 
 function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const { token, user } = useAuth();
@@ -37,6 +39,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   } | null>(null);
   const centeredRef = useRef(false);
 
+  const [openPanel, setOpenPanel] = useState<PanelId | null>(null);
+
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -45,7 +49,6 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [tokenUploading, setTokenUploading] = useState(false);
   const tokenFileRef = useRef<HTMLInputElement>(null);
 
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [history, setHistory] = useState<MapHistoryEntryPublic[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -111,6 +114,17 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   const canMoveToken = (t: TokenPublic) => iAmDm || t.created_by === user?.id;
 
+  const togglePanel = (panel: PanelId) => {
+    setOpenPanel((prev) => (prev === panel ? null : panel));
+    if (panel === "history" && history === null) {
+      setHistoryLoading(true);
+      api
+        .get<MapHistoryEntryPublic[]>(`/tabletops/${tabletopId}/vtt/history`, token)
+        .then(setHistory, () => setHistory([]))
+        .finally(() => setHistoryLoading(false));
+    }
+  };
+
   const onImageLoad = (e: SyntheticEvent<HTMLImageElement>) => {
     if (centeredRef.current || !containerRef.current) return;
     const img = e.currentTarget;
@@ -138,6 +152,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    setOpenPanel(null);
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
       startX: e.clientX,
@@ -229,6 +244,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       setTokens([]);
       setHistory(null);
       if (fileRef.current) fileRef.current.value = "";
+      setOpenPanel(null);
     } catch (err) {
       setUploadError(err instanceof ApiError ? err.message : "Falha ao enviar imagem");
     } finally {
@@ -260,29 +276,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       );
       setTokens((prev) => [...prev, created]);
       if (tokenFileRef.current) tokenFileRef.current.value = "";
+      setOpenPanel(null);
     } catch (err) {
       setTokenUploadError(err instanceof ApiError ? err.message : "Falha ao adicionar token");
     } finally {
       setTokenUploading(false);
     }
-  };
-
-  const toggleHistory = async () => {
-    if (!historyOpen && history === null) {
-      setHistoryLoading(true);
-      try {
-        const entries = await api.get<MapHistoryEntryPublic[]>(
-          `/tabletops/${tabletopId}/vtt/history`,
-          token,
-        );
-        setHistory(entries);
-      } catch {
-        setHistory([]);
-      } finally {
-        setHistoryLoading(false);
-      }
-    }
-    setHistoryOpen((v) => !v);
   };
 
   if (loading) {
@@ -373,26 +372,52 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         )}
       </div>
 
-      <div className="absolute left-4 top-4 flex gap-2">
+      {/* Top-left toolbar: navigation + info panels */}
+      <div className="absolute left-4 top-4 flex items-center gap-1 rounded-md border border-border-soft bg-surface/90 p-1 backdrop-blur">
         <Link
           href={`/tabletops/${tabletopId}`}
-          className="rounded-sm border border-border bg-surface/80 px-3 py-1.5 text-xs font-semibold text-text-muted backdrop-blur transition hover:text-text"
+          title="Sair do VTT"
+          className="flex h-9 w-9 items-center justify-center rounded-sm text-text-muted transition hover:bg-surface-2 hover:text-text"
         >
-          ← Sair do VTT
+          <DoorOpen size={18} />
         </Link>
+        <div className="mx-0.5 h-5 w-px bg-border-soft" />
+        <ToolbarIconButton
+          title="Membros"
+          active={openPanel === "members"}
+          onClick={() => togglePanel("members")}
+        >
+          <Users size={18} />
+        </ToolbarIconButton>
         {iAmDm && (
-          <button
-            type="button"
-            onClick={toggleHistory}
-            className="rounded-sm border border-border bg-surface/80 px-3 py-1.5 text-xs font-semibold text-text-muted backdrop-blur transition hover:text-text"
+          <ToolbarIconButton
+            title="Histórico de mapas"
+            active={openPanel === "history"}
+            onClick={() => togglePanel("history")}
           >
-            Histórico
-          </button>
+            <HistoryIcon size={18} />
+          </ToolbarIconButton>
         )}
       </div>
 
-      {historyOpen && (
-        <div className="absolute right-4 top-4 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+      {openPanel === "members" && (
+        <div className="absolute left-4 top-16 w-64 rounded-md border border-border-soft bg-surface/95 p-3 backdrop-blur">
+          <span className="mb-2 block font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            Membros
+          </span>
+          <ul className="flex flex-col gap-1.5">
+            {tabletop.members.map((m) => (
+              <li key={m.user_id} className="flex items-center justify-between gap-2 text-sm">
+                <span>{m.username}</span>
+                <Badge variant={m.role === "dm" ? "accent" : "neutral"}>{m.role}</Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {openPanel === "history" && (
+        <div className="absolute left-4 top-16 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
           <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
             Histórico de mapas
           </span>
@@ -401,7 +426,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             <p className="text-xs text-text-muted">Nenhum mapa anterior ainda.</p>
           )}
           {history?.map((entry) => (
-            <div key={entry.id} className="flex flex-col gap-1.5 border-t border-border-soft pt-3 first:border-t-0 first:pt-0">
+            <div
+              key={entry.id}
+              className="flex flex-col gap-1.5 border-t border-border-soft pt-3 first:border-t-0 first:pt-0"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={`${API_URL}${entry.image_url}`}
@@ -409,18 +437,38 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 className="h-24 w-full rounded-sm object-cover"
               />
               <span className="font-mono text-[10px] text-text-faint">
-                {new Date(entry.created_at).toLocaleString("pt-BR")} ·{" "}
-                {entry.tokens.length} {entry.tokens.length === 1 ? "token" : "tokens"}
+                {new Date(entry.created_at).toLocaleString("pt-BR")} · {entry.tokens.length}{" "}
+                {entry.tokens.length === 1 ? "token" : "tokens"}
               </span>
             </div>
           ))}
         </div>
       )}
 
-      {iAmDm && (
+      {/* Right toolbar: scene + token tools */}
+      <div className="absolute right-4 top-4 flex flex-col items-center gap-1 rounded-md border border-border-soft bg-surface/90 p-1 backdrop-blur">
+        {iAmDm && (
+          <ToolbarIconButton
+            title="Cena"
+            active={openPanel === "scene"}
+            onClick={() => togglePanel("scene")}
+          >
+            <ImagePlus size={18} />
+          </ToolbarIconButton>
+        )}
+        <ToolbarIconButton
+          title="Adicionar token"
+          active={openPanel === "token"}
+          onClick={() => togglePanel("token")}
+        >
+          <Shapes size={18} />
+        </ToolbarIconButton>
+      </div>
+
+      {openPanel === "scene" && iAmDm && (
         <form
           onSubmit={onUpload}
-          className="absolute bottom-4 left-4 flex w-56 flex-col gap-2 rounded-md border border-border-soft bg-surface/90 p-4 backdrop-blur"
+          className="absolute right-16 top-4 flex w-56 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur"
         >
           <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
             Cena
@@ -438,24 +486,26 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         </form>
       )}
 
-      <form
-        onSubmit={onAddToken}
-        className="absolute bottom-4 right-4 flex w-56 flex-col gap-2 rounded-md border border-border-soft bg-surface/90 p-4 backdrop-blur"
-      >
-        <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
-          Token
-        </span>
-        <input
-          ref={tokenFileRef}
-          type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          className="text-xs text-text-muted file:mr-2 file:rounded-sm file:border-0 file:bg-surface-2 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-text hover:file:bg-surface"
-        />
-        <FieldError>{tokenUploadError}</FieldError>
-        <Button type="submit" variant="secondary" disabled={tokenUploading} className="text-xs">
-          {tokenUploading ? "Enviando..." : "Adicionar token"}
-        </Button>
-      </form>
+      {openPanel === "token" && (
+        <form
+          onSubmit={onAddToken}
+          className="absolute right-16 top-4 flex w-56 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur"
+        >
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            Token
+          </span>
+          <input
+            ref={tokenFileRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="text-xs text-text-muted file:mr-2 file:rounded-sm file:border-0 file:bg-surface-2 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-text hover:file:bg-surface"
+          />
+          <FieldError>{tokenUploadError}</FieldError>
+          <Button type="submit" variant="secondary" disabled={tokenUploading} className="text-xs">
+            {tokenUploading ? "Enviando..." : "Adicionar token"}
+          </Button>
+        </form>
+      )}
     </div>
   );
 }

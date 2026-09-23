@@ -206,11 +206,15 @@ separated from the live/editable concept.
 **Visual identity**: before styling anything, read the
 `mytabletop-visual-identity` skill
 (`.claude/skills/mytabletop-visual-identity/SKILL.md`) — it documents the
-design tokens (a dark wine/mahogany palette, deliberately single-theme),
-typography, and the `src/components/ui.tsx` primitives (`Button`, `Input`,
-`Select`, `Card`, `Badge`, `FieldError`) that essentially every page is
+design tokens (a dark, warm-pastel "greige" shell with one saturated red
+accent — deliberately single-theme; a first, all-saturated-red iteration
+was replaced after it turned out too low-contrast to read), typography, and
+the `src/components/ui.tsx` primitives (`Button`, `Input`, `Select`, `Card`,
+`Badge`, `FieldError`, `ToolbarIconButton`) that essentially every page is
 built from. Don't hand-roll styled markup or introduce raw hex colors when
-those primitives and tokens already cover the case.
+those primitives and tokens already cover the case. The VTT screen uses
+`lucide-react` for its toolbar icons (the only icon library in the
+project) — reuse it rather than adding another one or hand-drawing SVGs.
 
 Next.js App Router, but **auth is plain client-side JWT in `localStorage`**,
 not cookies/middleware — there is no server-side session. The pattern:

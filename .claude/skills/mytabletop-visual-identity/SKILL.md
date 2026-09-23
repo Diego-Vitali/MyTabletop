@@ -1,6 +1,6 @@
 ---
 name: mytabletop-visual-identity
-description: Visual identity and UI conventions for the MyTabletop frontend (Apple-minimalist, always-dark, a rich-mahogany/wine palette with a brown-red accent). Use whenever creating or restyling a page, component, or UI element in frontend/ — new screens, forms, cards, buttons, badges, dashboards, sheet/character UI, VTT overlays. Not for backend code.
+description: Visual identity and UI conventions for the MyTabletop frontend (Apple-minimalist, always-dark, a warm pastel "greige" shell with one saturated red accent). Use whenever creating or restyling a page, component, or UI element in frontend/ — new screens, forms, cards, buttons, badges, dashboards, sheet/character UI, VTT overlays and toolbars. Not for backend code.
 ---
 
 # MyTabletop visual identity
@@ -8,10 +8,15 @@ description: Visual identity and UI conventions for the MyTabletop frontend (App
 MyTabletop's UI is deliberately **always dark** (no light-mode variant — the
 product's own identity, not a missed a11y feature) with an Apple-minimalist
 feel: generous whitespace, restrained color, subtle borders instead of heavy
-shadows, one accent color spent carefully. The palette is a fixed set of
-wine/mahogany reds handed down by the project owner (not derived from a
-design exploration this time) — see the token table below for the exact
-values and where each one comes from.
+shadows, one accent color spent carefully. The palette went through two
+iterations: a saturated wine/mahogany red-on-red scheme first, then a pass
+explicitly asked for because that version was hard to read — structural
+surfaces were all so dark and so close in value that panels, cards and
+borders barely separated from the page background. The current palette
+fixes that: **bg/surface/border are soft, low-saturation warm neutrals
+("pastel" tones) with clearly stepped lightness, and red is reserved for
+the accent only** — don't reintroduce a saturated red into a structural
+token, that's the exact regression this fixed.
 
 ## Before building anything
 
@@ -37,38 +42,40 @@ values and where each one comes from.
 All defined in `frontend/src/app/globals.css` (`:root`, hard-coded — not
 gated behind `prefers-color-scheme`, since the product is single-theme by
 design) and exposed as Tailwind utilities via `@theme inline`. Structural
-tokens (bg/surface/border) all come from one family (`rich_mahogany`) so the
-UI's "shell" reads as one cohesive dark material; accent roles borrow from
-the other families in the owner's palette.
+tokens (bg/surface/surface-2/border) are one warm-neutral "greige" ramp with
+clearly separated lightness steps — that separation is the whole point, it's
+what makes panels/cards/borders visible against each other and against the
+page. Only `accent` carries real saturation.
 
-| Token | Hex | Source family | Tailwind utility | Role |
-|---|---|---|---|---|
-| `--bg` | `#080200` | rich_mahogany 100 | `bg-bg` | Page background, darkest tone |
-| `--surface` | `#170601` | rich_mahogany 300 | `bg-surface` | Elevated panels, nav |
-| `--surface-2` | `#1F0802` | rich_mahogany 400 | `bg-surface-2` | Cards, inputs — one step lighter than `surface` |
-| `--border` | `#250902` | rich_mahogany DEFAULT/500 | `border-border` | Default border, interactive outlines |
-| `--border-soft` | `#1F0802` | rich_mahogany 400 | `border-border-soft` | Quieter divider (card edges, panel borders) |
-| `--text` | `#F3E7E4` | custom (not in the source palette) | `text-text` | Primary text — warm off-white, never pure `#fff` |
-| `--text-muted` | `#B08984` | custom | `text-text-muted` | Secondary text, labels, nav links |
-| `--text-faint` | `#7A5B57` | custom | `text-text-faint` | Tertiary/eyebrow text, placeholders, timestamps |
-| `--accent` | `#AD2831` | brown_red DEFAULT/500 | `bg-accent` / `text-accent` | **Only** for primary actions and the current/important state |
-| `--accent-strong` | `#D23F49` | brown_red 600 | `text-accent-strong` | Hover/emphasis on accent, link color on dark surfaces |
-| `--accent-soft` | `rgba(173,40,49,.16)` | brown_red DEFAULT, low alpha | `bg-accent-soft` | Accent-tinted background (active badge fill) |
-| `--on-accent` | `#F3E7E4` | = `--text` | `text-on-accent` | Text/icon placed *on top of* `--accent` (light-on-medium-red for contrast) |
-| `--rare` | `#8D0A24` | garnet 600 (the palette's second, unnamed family) | `text-rare` / `bg-rare` | **Sparingly** — a rare/special indicator only (e.g. an NPC badge), never a second primary color |
-| `--ok` | `#57B98A` | kept from before, not in the owner's palette | `bg-ok` | Positive/healthy state (e.g. a full resource bar) — deliberately still green: no green exists in the wine palette, and "full health = green" is a strong enough UX convention to keep as a functional exception, separate from brand color |
-| `--danger` | `#E42C3B` | black_cherry 700 | `text-danger` | Destructive actions, errors |
+| Token | Hex | Tailwind utility | Role |
+|---|---|---|---|
+| `--bg` | `#1C1512` | `bg-bg` | Page background |
+| `--surface` | `#2A211D` | `bg-surface` | Elevated panels, nav |
+| `--surface-2` | `#382C26` | `bg-surface-2` | Cards, inputs — one step lighter than `surface` |
+| `--border` | `#6B5347` | `border-border` | Default border, interactive outlines — deliberately a good bit lighter than `surface-2` so edges are actually visible |
+| `--border-soft` | `#40332C` | `border-border-soft` | Quieter divider (card edges, panel borders) |
+| `--text` | `#F4E9E1` | `text-text` | Primary text — soft pastel cream, never pure `#fff` |
+| `--text-muted` | `#C9AD9D` | `text-text-muted` | Secondary text, labels, nav links |
+| `--text-faint` | `#93776A` | `text-text-faint` | Tertiary/eyebrow text, placeholders, timestamps |
+| `--accent` | `#C1454E` | `bg-accent` / `text-accent` | **The only saturated color in the palette.** Only for primary actions and the current/important state |
+| `--accent-strong` | `#E0838A` | `text-accent-strong` | Hover/emphasis on accent, link color on dark surfaces — a lighter, more pastel step of the same red |
+| `--accent-soft` | `rgba(193,69,78,.18)` | `bg-accent-soft` | Accent-tinted background (active badge fill) |
+| `--on-accent` | `#1C1512` | `text-on-accent` | Text/icon placed *on top of* `--accent` (dark-on-medium-red for contrast — `accent` is mid-brightness now, not dark, so this flipped from light-on-accent in the previous palette) |
+| `--rare` | `#B98A6A` | `text-rare` / `bg-rare` | Soft terracotta — **sparingly**, a rare/special indicator only (e.g. an NPC badge), never a second primary color |
+| `--ok` | `#85BD9A` | `bg-ok` | Positive/healthy state (e.g. a full resource bar) — the one non-red hue in the palette, kept because "full health = green" is a strong enough UX convention to be worth a functional exception |
+| `--danger` | `#D98A78` | `text-danger` | Destructive actions, errors — a soft coral, deliberately *less* saturated than `accent` so the two never compete for "the red that pops" |
 
 Radius scale (also theme tokens, so `rounded-sm/md/lg` map to these, not
 Tailwind's defaults): `--radius-sm: 9px` (buttons, inputs, small controls),
 `--radius-md: 14px` (cards), `--radius-lg: 20px` (large panels/frames).
 
-**A note on hue distinction**: `accent`, `rare`, and `danger` are all reds by
-necessity (that's the whole palette) — they read apart mainly by
-brightness/saturation, not hue, which is a real constraint of this palette
-compared to a multi-hue one. Lean on position/label/context (not color alone)
-to distinguish them when it matters — e.g. `danger`-styled text only ever
-appears on a "Remover"-type action, never as a standalone status dot.
+**Before touching any of these values**: the previous iteration failed
+specifically because structural tokens (bg/surface/border) were all
+near-black and all saturated red — nothing separated visually. If you're
+ever asked to adjust the palette again, preserve the lightness *steps*
+between bg → surface → surface-2 → border (each one should read as clearly
+lighter than the last) and keep saturation concentrated in `accent`/
+`accent-strong` — don't let it creep back into the structural tokens.
 
 ## Typography
 
@@ -110,12 +117,26 @@ appears on a "Remover"-type action, never as a standalone status dot.
 - **Nav**: brand mark is a small accent-colored dot + wordmark, never a logo
   image. Current-user affordance is a circular initials avatar (`surface-2`
   bg, mono initials) next to a bordered ghost "Sair" button.
-- **Floating VTT panels** (`VttView.tsx`): semi-opaque `bg-surface/80` or
-  `/90` with `backdrop-blur`, used for controls that float over the
-  full-screen canvas (exit link, history toggle, upload panels) rather than
-  sitting in normal document flow. This is the one place panels float over
-  content instead of being laid out in the page — don't reuse it outside the
-  VTT screen.
+- **VTT icon toolbars + dropdown panels** (`VttView.tsx`): modeled after
+  Foundry VTT / Owlbear Rodeo's edge toolbars, per explicit reference from
+  the project owner. Small icon-only buttons (`ToolbarIconButton` in
+  `ui.tsx`, `lucide-react` icons, 18px) sit in a horizontal or vertical
+  strip — `bg-surface/90` + `backdrop-blur`, `border-border-soft`, `p-1`,
+  icons separated by a `h-5 w-px bg-border-soft` divider when grouping
+  distinct concerns (e.g. exit vs. info panels). Clicking an icon toggles a
+  **dropdown panel** anchored near it (`absolute`, positioned just past the
+  toolbar — `top-16` under a horizontal bar, `right-16` beside a vertical
+  one), same floating-panel styling (`bg-surface/95 backdrop-blur
+  border-border-soft rounded-md p-4`) as before. Only one panel is open at a
+  time (`openPanel: PanelId | null` state) and clicking the canvas itself
+  closes whichever is open — clicking *inside* a panel doesn't, since panels
+  live outside the pannable canvas element in the DOM. An active icon gets
+  `ToolbarIconButton`'s `active` prop (accent-soft fill), giving the
+  "currently open tool" affordance the reference screenshots show. This is
+  the one place panels float over content instead of being laid out in the
+  page — don't reuse it outside the VTT screen, and prefer extending this
+  pattern (a new icon + a new panel) over inventing a different floating-UI
+  shape for future VTT tools.
 - **Tokens on the map**: a circular (`rounded-full`) cropped image
   (`object-cover`) with a `border-border-soft` ring and a drop shadow so it
   reads against any map color. A small danger-colored "×" delete button

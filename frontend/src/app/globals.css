@@ -1,32 +1,34 @@
 @import "tailwindcss";
 
 /*
-  MyTabletop — identidade em tons de vinho/mahogany, sempre noturna (não
-  segue o tema claro/escuro do sistema) — ver
+  MyTabletop — dark pastel identity, sempre noturna (não segue o tema
+  claro/escuro do sistema) — ver
   .claude/skills/mytabletop-visual-identity/SKILL.md.
 
-  Estrutura (bg/surface/border) vem da família rich_mahogany; acentos vêm de
-  brown_red (ação primária), garnet (indicador raro) e black_cherry (perigo).
+  Estrutura (bg/surface/border/texto) é um "greige" quente, pouco saturado,
+  com degraus de luminosidade bem separados para dar leitura clara aos
+  planos da UI. O vermelho (accent) é a única cor com saturação alta —
+  reservado para realce; rare/danger/ok são variações suaves (pastel) dele.
 */
 :root {
-  --bg: #080200; /* rich_mahogany 100 */
-  --surface: #170601; /* rich_mahogany 300 */
-  --surface-2: #1f0802; /* rich_mahogany 400 */
-  --border: #250902; /* rich_mahogany DEFAULT/500 */
-  --border-soft: #1f0802;
+  --bg: #1c1512;
+  --surface: #2a211d;
+  --surface-2: #382c26;
+  --border: #6b5347;
+  --border-soft: #40332c;
 
-  --text: #f3e7e4;
-  --text-muted: #b08984;
-  --text-faint: #7a5b57;
+  --text: #f4e9e1;
+  --text-muted: #c9ad9d;
+  --text-faint: #93776a;
 
-  --accent: #ad2831; /* brown_red DEFAULT */
-  --accent-strong: #d23f49; /* brown_red 600 */
-  --accent-soft: rgba(173, 40, 49, 0.16);
-  --on-accent: #f3e7e4;
+  --accent: #c1454e;
+  --accent-strong: #e0838a;
+  --accent-soft: rgba(193, 69, 78, 0.18);
+  --on-accent: #1c1512;
 
-  --rare: #8d0a24; /* garnet 600 — usado com moderação (ex: NEX) */
-  --ok: #57b98a;
-  --danger: #e42c3b; /* black_cherry 700 */
+  --rare: #b98a6a; /* terracota suave — indicador raro, ex: NEX */
+  --ok: #85bd9a; /* verde pastel — único fora da família vermelha, uso funcional (saúde/sucesso) */
+  --danger: #d98a78; /* coral pastel — mais suave que o accent, nunca compete com ele */
 
   --radius-lg: 20px;
   --radius-md: 14px;
