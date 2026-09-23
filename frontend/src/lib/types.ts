@@ -49,6 +49,31 @@ export interface SheetPublic {
   updated_at: string;
 }
 
+export interface TokenPublic {
+  id: string;
+  tabletop_id: string;
+  image_url: string;
+  x: number;
+  y: number;
+  created_by: string;
+  created_at: string;
+}
+
+export interface TokenSnapshot {
+  image_url: string;
+  x: number;
+  y: number;
+}
+
+export interface MapHistoryEntryPublic {
+  id: string;
+  tabletop_id: string;
+  image_url: string;
+  tokens: TokenSnapshot[];
+  replaced_by: string;
+  created_at: string;
+}
+
 /** Mirrors backend RULEBOOK_REGISTRY attribute definitions (app/models/rulebooks.py). */
 export const ATTRIBUTE_DEFS: Record<string, { key: string; label: string }[]> = {
   ordem_paranormal_classico: [

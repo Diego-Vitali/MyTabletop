@@ -63,7 +63,9 @@ npm run dev
 - [ ] **Fase 3 — VTT** (em andamento, construída aos poucos): tela cheia com
       a cena (imagem de fundo) definida pelo Mestre — fixa, sem biblioteca,
       sem exclusão — que todos os membros podem posicionar e dar zoom
-      independentemente, com troca de imagem sincronizada em tempo real via
-      WebSocket. Ainda faltam tokens.
+      independentemente. Tokens podem ser adicionados por qualquer membro e
+      arrastados em tempo real (Mestre move qualquer um, jogador só os seus).
+      Cada troca de mapa arquiva o anterior e a posição de seus tokens num
+      histórico permanente. Tudo sincronizado via WebSocket.
 - [ ] **Fase 4 — Escudo do Mestre:** notas em Markdown com grafos e links
       entre arquivos, ao estilo Obsidian.

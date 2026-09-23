@@ -13,9 +13,11 @@ direction from the project owner — don't assume the next slice (sheets:
 NEX, skills, derived stats, rituals; VTT: tokens, multi-user cursors) without
 asking. See "Sheet architecture" and "VTT architecture" below for what
 exists today. Phase 4 (the Obsidian-style Markdown GM shield) does not exist
-yet. Tokens-on-a-scene don't exist yet — today's VTT slice is a full-screen
-canvas with a DM-controlled background image, live-synced over WebSocket,
-that every member can independently pan/zoom.
+yet. The VTT is a full-screen canvas with a DM-controlled background image
+and member-uploaded tokens with drag-to-move, all live-synced over
+WebSocket, plus a permanent history of past maps and their token layouts.
+Not yet built: linking a token to a Sheet, and any multi-user cursor/
+selection sync beyond position.
 
 Monorepo layout: `backend/` (FastAPI) and `frontend/` (Next.js), deployed
 together via `docker-compose.yml` at the repo root.
@@ -131,58 +133,80 @@ attributes — extend it rather than building a parallel stat-tile component.
 
 ### VTT architecture (Phase 3, in progress)
 
-**The background is not a separate resource** — this was deliberately
-simplified from an earlier "Scene" collection (list/switch/delete) after
-explicit product direction: the VTT background is fixed, singular, and
-un-deletable by anyone (DM included). It's just one field,
-`Tabletop.background_image` (a filename, nullable), replaced in place by
-the DM. There is no scene library, no "activate" endpoint, no delete
-endpoint — don't reintroduce that shape unless asked again.
+**The live background is not a separate resource** — the VTT background is
+fixed, singular, and un-deletable by anyone (DM included): just one field,
+`Tabletop.background_image` (a storage-relative path, nullable), replaced in
+place by the DM. There is no "pick from a library" or delete endpoint for
+the *live* background — don't reintroduce that shape unless asked again.
+Past maps are **not** thrown away though — see map history below; that's
+the one place a browsable list of old maps does exist, deliberately
+separated from the live/editable concept.
 
+- **Storage is split into two categories** (`app/core/storage.py`,
+  `ImageCategory = Literal["maps", "tokens"]`): `save_image(file, category)`
+  writes under `UPLOAD_DIR/<category>/<uuid4>.<ext>` and returns that
+  relative path (e.g. `"maps/ab12....png"`) — models store this whole
+  path in one string field (`Tabletop.background_image`,
+  `Token.image_path`, `TokenSnapshot.image_path`), not a bare filename, so
+  `f"/uploads/{path}"` is always the right way to build a browsable URL,
+  everywhere. `UPLOAD_DIR` = `<repo>/backend/uploads/`, a Docker volume
+  (`uploads_data:/app/uploads`) so it survives container recreation.
+  **Nothing is ever deleted from disk** — every map and token image
+  uploaded stays there permanently (this is deliberate, see history below);
+  don't add a delete-the-file step back into `vtt_service`/`token_service`.
 - `PUT /tabletops/{id}/vtt/background` (`app/routers/vtt.py`, DM-only,
-  `multipart/form-data` with an `image` file — this is the one endpoint in
-  the API that isn't JSON in/out, hence `python-multipart` in
-  `pyproject.toml`) replaces the background: `vtt_service.set_background`
-  saves the new file, points `Tabletop.background_image` at it, deletes the
-  old file (no history kept), and broadcasts the change over WebSocket.
-- Images live on **disk**, not in Mongo (`app/core/storage.py`, `UPLOAD_DIR`
-  = `<repo>/backend/uploads/`, a Docker volume — `uploads_data:/app/uploads`
-  in `docker-compose.yml` — so they survive container recreation).
-  `save_image` validates content-type against an allowlist
-  (`ALLOWED_IMAGE_TYPES`: PNG/JPEG/WEBP/GIF) and a 15MB cap, then writes it
-  under a random `uuid4` filename (never trust/reuse the uploaded filename).
-  Served back by mounting `StaticFiles` at `/uploads` in `app/main.py`;
-  `TabletopPublic.background_image_url` is the browsable path
-  (`/uploads/{filename}`) — a relative path from the *backend's* origin, so
-  the frontend prepends `API_URL` to it, not its own origin.
+  `multipart/form-data` — this and the token endpoints are the only
+  non-JSON routes in the API, hence `python-multipart` in `pyproject.toml`)
+  replaces the background via `vtt_service.set_background`, which — *before*
+  overwriting — archives the outgoing map plus a snapshot of every live
+  token's position into a new `MapHistoryEntry` (`app/models/map_history.py`,
+  collection `map_history`), then deletes the live `Token` documents (not
+  their image files) so the new map starts empty. Broadcasts
+  `{"type": "background_updated", "background_image_url": "..."}`.
+- `GET /tabletops/{id}/vtt/history` (any member) lists `MapHistoryEntry`
+  rows, newest first, each with the old map's URL, its token snapshot
+  (image URL + x/y, no live ids), who replaced it, and when. Read-only, no
+  restore action — the frontend (`VttView.tsx`'s "Histórico" panel,
+  DM-only) only ever displays it.
+- **Tokens** (`app/models/token.py`, collection `tokens`): `tabletop_id`,
+  `image_path` (under `tokens/`), `x`/`y` (floats, in the *background
+  image's own natural-pixel coordinate space* — not screen pixels, so a
+  token stays visually pinned to the map regardless of any viewer's own
+  pan/zoom), `created_by`. `app/routers/tokens.py` +
+  `app/services/token_service.py`: any member can create a token
+  (`require_member`) — it's `created_by` them; moving/deleting uses
+  `require_token_editor` (`app/core/deps.py`): a DM can touch any token, a
+  non-DM member only one they created. Every mutation broadcasts
+  (`token_added` / `token_moved` / `token_deleted`).
 - **Real-time sync** (`app/core/ws_manager.py` + `app/routers/ws.py`): a
   single in-memory `ConnectionManager` keyed by `tabletop_id` — fine for one
   backend process (this project's local self-hosted target), would need a
   pub/sub backend to run more than one. `GET /ws/tabletops/{id}` (note: a
   WebSocket route, not visible in `/docs`/OpenAPI) authenticates via a
   `?token=<jwt>` query param rather than an `Authorization` header, because
-  the browser's native `WebSocket` constructor can't set custom headers.
-  `set_background` broadcasts `{"type": "background_updated",
-  "background_image_url": "..."}` to everyone connected to that tabletop's
-  room; there's no other message type yet (no client→server messages are
-  expected — the endpoint just blocks on `receive_text()` to detect
-  disconnects). This is the first WebSocket usage in the app and the
-  pattern (one manager, one room per tabletop, JSON `{"type": ...}`
-  messages) is meant to be extended for tokens later, not replaced.
-- Tests: `tests/test_vtt.py` covers the HTTP endpoint; `tests/test_ws_manager.py`
-  unit-tests `ConnectionManager` directly against fake WebSocket objects
-  (`send_json`) rather than through the full ASGI stack — our async
-  `httpx`-based test `client` fixture doesn't support WebSocket upgrades, so
-  there's no automated test of the endpoint's auth/broadcast wiring end to
-  end; that's been verified manually instead (two sessions/tabs, one
-  uploading, one watching it update live).
+  the browser's native `WebSocket` constructor can't set custom headers. A
+  client is expected to send nothing — the endpoint just blocks on
+  `receive_text()` to detect disconnects. Message shape is always
+  `{"type": ..., ...}`; the frontend's own optimistic update (e.g. after its
+  own upload/drag) and the WS echo of that same change are both applied,
+  deliberately idempotently (dedupe-by-id for `token_added`, plain
+  overwrite for moves) rather than trying to suppress the echo.
+- Tests: `tests/test_vtt.py` and `tests/test_tokens.py` cover the HTTP
+  endpoints (including that replacing the background archives to history
+  and clears live tokens); `tests/test_ws_manager.py` unit-tests
+  `ConnectionManager` directly against fake WebSocket objects (`send_json`)
+  rather than through the full ASGI stack — our async `httpx`-based test
+  `client` fixture doesn't support WebSocket upgrades, so there's no
+  automated test of the endpoint's auth/broadcast wiring end to end; that's
+  been verified manually instead (uploading/dragging in one session,
+  watching a `curl` upload from another arrive live in the browser).
 
 ## Frontend architecture
 
 **Visual identity**: before styling anything, read the
 `mytabletop-visual-identity` skill
 (`.claude/skills/mytabletop-visual-identity/SKILL.md`) — it documents the
-"Sinal" design tokens (dark navy + gold accent, deliberately single-theme),
+design tokens (a dark wine/mahogany palette, deliberately single-theme),
 typography, and the `src/components/ui.tsx` primitives (`Button`, `Input`,
 `Select`, `Card`, `Badge`, `FieldError`) that essentially every page is
 built from. Don't hand-roll styled markup or introduce raw hex colors when

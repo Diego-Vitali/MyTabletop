@@ -1,29 +1,32 @@
 @import "tailwindcss";
 
 /*
-  MyTabletop — identidade "Sinal": dourado quente sobre azul-marinho profundo.
-  Visual deliberadamente noturno e único (não segue o tema claro/escuro do
-  sistema) — ver .claude/skills/mytabletop-visual-identity/SKILL.md.
+  MyTabletop — identidade em tons de vinho/mahogany, sempre noturna (não
+  segue o tema claro/escuro do sistema) — ver
+  .claude/skills/mytabletop-visual-identity/SKILL.md.
+
+  Estrutura (bg/surface/border) vem da família rich_mahogany; acentos vêm de
+  brown_red (ação primária), garnet (indicador raro) e black_cherry (perigo).
 */
 :root {
-  --bg: #01141c;
-  --surface: #022b3c; /* Deep Space Blue */
-  --surface-2: #0c3547;
-  --border: #14425a;
-  --border-soft: #0c3547;
+  --bg: #080200; /* rich_mahogany 100 */
+  --surface: #170601; /* rich_mahogany 300 */
+  --surface-2: #1f0802; /* rich_mahogany 400 */
+  --border: #250902; /* rich_mahogany DEFAULT/500 */
+  --border-soft: #1f0802;
 
-  --text: #edf3f6;
-  --text-muted: #8ca3af;
-  --text-faint: #5e7986;
+  --text: #f3e7e4;
+  --text-muted: #b08984;
+  --text-faint: #7a5b57;
 
-  --accent: #f3c647; /* Tuscan Sun */
-  --accent-strong: #ffe481; /* Jasmine */
-  --accent-soft: rgba(243, 198, 71, 0.14);
-  --on-accent: #01141c;
+  --accent: #ad2831; /* brown_red DEFAULT */
+  --accent-strong: #d23f49; /* brown_red 600 */
+  --accent-soft: rgba(173, 40, 49, 0.16);
+  --on-accent: #f3e7e4;
 
-  --rare: #6b7fd7; /* Glaucous — usado com moderação (ex: NEX) */
+  --rare: #8d0a24; /* garnet 600 — usado com moderação (ex: NEX) */
   --ok: #57b98a;
-  --danger: #e8695b;
+  --danger: #e42c3b; /* black_cherry 700 */
 
   --radius-lg: 20px;
   --radius-md: 14px;

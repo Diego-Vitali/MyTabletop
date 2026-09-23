@@ -4,13 +4,14 @@ import { useEffect, useRef, useState, type FormEvent, type SyntheticEvent } from
 import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError, API_URL, WS_URL } from "@/lib/api";
-import type { TabletopPublic } from "@/lib/types";
+import type { MapHistoryEntryPublic, TabletopPublic, TokenPublic } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Button, FieldError } from "@/components/ui";
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
 const ZOOM_STEP = 1.1;
+const TOKEN_SIZE = 64;
 
 type Transform = { x: number; y: number; scale: number };
 
@@ -18,6 +19,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const { token, user } = useAuth();
   const [tabletop, setTabletop] = useState<TabletopPublic | null>(null);
   const [backgroundUrl, setBackgroundUrl] = useState<string | null>(null);
+  const [tokens, setTokens] = useState<TokenPublic[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -26,20 +28,39 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(
     null,
   );
+  const tokenDragRef = useRef<{
+    id: string;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
   const centeredRef = useRef(false);
 
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [tokenUploadError, setTokenUploadError] = useState<string | null>(null);
+  const [tokenUploading, setTokenUploading] = useState(false);
+  const tokenFileRef = useRef<HTMLInputElement>(null);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<MapHistoryEntryPublic[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   useEffect(() => {
     if (!token) return;
     let ignore = false;
-    api.get<TabletopPublic>(`/tabletops/${tabletopId}`, token).then(
-      (tt) => {
+    Promise.all([
+      api.get<TabletopPublic>(`/tabletops/${tabletopId}`, token),
+      api.get<TokenPublic[]>(`/tabletops/${tabletopId}/vtt/tokens`, token),
+    ]).then(
+      ([tt, tk]) => {
         if (!ignore) {
           setTabletop(tt);
           setBackgroundUrl(tt.background_image_url);
+          setTokens(tk);
           setLoading(false);
         }
       },
@@ -55,7 +76,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     };
   }, [token, tabletopId]);
 
-  // Real-time: the DM's background swap reaches every connected member here.
+  // Real-time: background swaps and token changes from any member reach
+  // everyone else here.
   useEffect(() => {
     if (!token) return;
     const ws = new WebSocket(
@@ -67,6 +89,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         if (msg.type === "background_updated") {
           centeredRef.current = false;
           setBackgroundUrl(msg.background_image_url);
+          setTokens([]);
+        } else if (msg.type === "token_added") {
+          setTokens((prev) => (prev.some((t) => t.id === msg.token.id) ? prev : [...prev, msg.token]));
+        } else if (msg.type === "token_moved") {
+          setTokens((prev) =>
+            prev.map((t) => (t.id === msg.token_id ? { ...t, x: msg.x, y: msg.y } : t)),
+          );
+        } else if (msg.type === "token_deleted") {
+          setTokens((prev) => prev.filter((t) => t.id !== msg.token_id));
         }
       } catch {
         // ignore malformed messages
@@ -78,15 +109,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const iAmDm =
     !!user && !!tabletop && tabletop.members.some((m) => m.user_id === user.id && m.role === "dm");
 
+  const canMoveToken = (t: TokenPublic) => iAmDm || t.created_by === user?.id;
+
   const onImageLoad = (e: SyntheticEvent<HTMLImageElement>) => {
     if (centeredRef.current || !containerRef.current) return;
     const img = e.currentTarget;
     const rect = containerRef.current.getBoundingClientRect();
-    const scale = Math.min(
-      rect.width / img.naturalWidth,
-      rect.height / img.naturalHeight,
-      1,
-    );
+    const scale = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight, 1);
     setTransform({
       x: (rect.width - img.naturalWidth * scale) / 2,
       y: (rect.height - img.naturalHeight * scale) / 2,
@@ -132,6 +161,51 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     dragRef.current = null;
   };
 
+  const onTokenPointerDown = (e: React.PointerEvent, t: TokenPublic) => {
+    if (!canMoveToken(t)) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    tokenDragRef.current = { id: t.id, startX: e.clientX, startY: e.clientY, originX: t.x, originY: t.y };
+  };
+
+  const onTokenPointerMove = (e: React.PointerEvent) => {
+    const drag = tokenDragRef.current;
+    if (!drag) return;
+    e.stopPropagation();
+    const dx = (e.clientX - drag.startX) / transform.scale;
+    const dy = (e.clientY - drag.startY) / transform.scale;
+    setTokens((prev) =>
+      prev.map((t) => (t.id === drag.id ? { ...t, x: drag.originX + dx, y: drag.originY + dy } : t)),
+    );
+  };
+
+  const onTokenPointerUp = async (e: React.PointerEvent) => {
+    const drag = tokenDragRef.current;
+    if (!drag) return;
+    e.stopPropagation();
+    tokenDragRef.current = null;
+    const moved = tokens.find((t) => t.id === drag.id);
+    if (!moved) return;
+    try {
+      await api.patch<TokenPublic>(
+        `/tabletops/${tabletopId}/vtt/tokens/${drag.id}`,
+        { x: moved.x, y: moved.y },
+        token,
+      );
+    } catch {
+      // best effort — a future WS message will correct any drift
+    }
+  };
+
+  const deleteToken = async (t: TokenPublic) => {
+    setTokens((prev) => prev.filter((tok) => tok.id !== t.id));
+    try {
+      await api.del(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, token);
+    } catch {
+      // ignore — WS/reload will reconcile
+    }
+  };
+
   const onUpload = async (e: FormEvent) => {
     e.preventDefault();
     const file = fileRef.current?.files?.[0];
@@ -152,12 +226,63 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       );
       centeredRef.current = false;
       setBackgroundUrl(updated.background_image_url);
+      setTokens([]);
+      setHistory(null);
       if (fileRef.current) fileRef.current.value = "";
     } catch (err) {
       setUploadError(err instanceof ApiError ? err.message : "Falha ao enviar imagem");
     } finally {
       setUploading(false);
     }
+  };
+
+  const onAddToken = async (e: FormEvent) => {
+    e.preventDefault();
+    const file = tokenFileRef.current?.files?.[0];
+    if (!file || !containerRef.current) {
+      setTokenUploadError("Escolha uma imagem");
+      return;
+    }
+    setTokenUploadError(null);
+    setTokenUploading(true);
+    try {
+      const rect = containerRef.current.getBoundingClientRect();
+      const centerX = (rect.width / 2 - transform.x) / transform.scale;
+      const centerY = (rect.height / 2 - transform.y) / transform.scale;
+      const formData = new FormData();
+      formData.append("x", String(centerX));
+      formData.append("y", String(centerY));
+      formData.append("image", file);
+      const created = await api.upload<TokenPublic>(
+        `/tabletops/${tabletopId}/vtt/tokens`,
+        formData,
+        token,
+      );
+      setTokens((prev) => [...prev, created]);
+      if (tokenFileRef.current) tokenFileRef.current.value = "";
+    } catch (err) {
+      setTokenUploadError(err instanceof ApiError ? err.message : "Falha ao adicionar token");
+    } finally {
+      setTokenUploading(false);
+    }
+  };
+
+  const toggleHistory = async () => {
+    if (!historyOpen && history === null) {
+      setHistoryLoading(true);
+      try {
+        const entries = await api.get<MapHistoryEntryPublic[]>(
+          `/tabletops/${tabletopId}/vtt/history`,
+          token,
+        );
+        setHistory(entries);
+      } catch {
+        setHistory([]);
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
+    setHistoryOpen((v) => !v);
   };
 
   if (loading) {
@@ -188,19 +313,59 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         onPointerLeave={onPointerUp}
       >
         {backgroundUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={backgroundUrl}
-            src={`${API_URL}${backgroundUrl}`}
-            alt="Cena"
-            draggable={false}
-            onLoad={onImageLoad}
-            className="pointer-events-none absolute left-0 top-0 max-w-none select-none"
+          <div
+            className="absolute left-0 top-0"
             style={{
               transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
               transformOrigin: "0 0",
             }}
-          />
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              key={backgroundUrl}
+              src={`${API_URL}${backgroundUrl}`}
+              alt="Cena"
+              draggable={false}
+              onLoad={onImageLoad}
+              className="pointer-events-none max-w-none select-none"
+            />
+            {tokens.map((t) => (
+              <div
+                key={t.id}
+                onPointerDown={(e) => onTokenPointerDown(e, t)}
+                onPointerMove={onTokenPointerMove}
+                onPointerUp={onTokenPointerUp}
+                className="group absolute"
+                style={{
+                  left: t.x - TOKEN_SIZE / 2,
+                  top: t.y - TOKEN_SIZE / 2,
+                  width: TOKEN_SIZE,
+                  height: TOKEN_SIZE,
+                  touchAction: "none",
+                  cursor: canMoveToken(t) ? "grab" : "default",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`${API_URL}${t.image_url}`}
+                  alt="Token"
+                  draggable={false}
+                  className="h-full w-full select-none rounded-full border-2 border-border-soft object-cover shadow-lg"
+                />
+                {canMoveToken(t) && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => deleteToken(t)}
+                    className="absolute -right-1 -top-1 hidden h-5 w-5 items-center justify-center rounded-full bg-danger text-[10px] font-bold text-on-accent group-hover:flex"
+                    title="Remover token"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="flex h-full w-full items-center justify-center text-text-muted">
             Nenhuma cena definida ainda.
@@ -208,12 +373,49 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         )}
       </div>
 
-      <Link
-        href={`/tabletops/${tabletopId}`}
-        className="absolute left-4 top-4 rounded-sm border border-border bg-surface/80 px-3 py-1.5 text-xs font-semibold text-text-muted backdrop-blur transition hover:text-text"
-      >
-        ← Sair do VTT
-      </Link>
+      <div className="absolute left-4 top-4 flex gap-2">
+        <Link
+          href={`/tabletops/${tabletopId}`}
+          className="rounded-sm border border-border bg-surface/80 px-3 py-1.5 text-xs font-semibold text-text-muted backdrop-blur transition hover:text-text"
+        >
+          ← Sair do VTT
+        </Link>
+        {iAmDm && (
+          <button
+            type="button"
+            onClick={toggleHistory}
+            className="rounded-sm border border-border bg-surface/80 px-3 py-1.5 text-xs font-semibold text-text-muted backdrop-blur transition hover:text-text"
+          >
+            Histórico
+          </button>
+        )}
+      </div>
+
+      {historyOpen && (
+        <div className="absolute right-4 top-4 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            Histórico de mapas
+          </span>
+          {historyLoading && <p className="text-xs text-text-muted">Carregando...</p>}
+          {!historyLoading && history?.length === 0 && (
+            <p className="text-xs text-text-muted">Nenhum mapa anterior ainda.</p>
+          )}
+          {history?.map((entry) => (
+            <div key={entry.id} className="flex flex-col gap-1.5 border-t border-border-soft pt-3 first:border-t-0 first:pt-0">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`${API_URL}${entry.image_url}`}
+                alt="Mapa anterior"
+                className="h-24 w-full rounded-sm object-cover"
+              />
+              <span className="font-mono text-[10px] text-text-faint">
+                {new Date(entry.created_at).toLocaleString("pt-BR")} ·{" "}
+                {entry.tokens.length} {entry.tokens.length === 1 ? "token" : "tokens"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {iAmDm && (
         <form
@@ -235,6 +437,25 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           </Button>
         </form>
       )}
+
+      <form
+        onSubmit={onAddToken}
+        className="absolute bottom-4 right-4 flex w-56 flex-col gap-2 rounded-md border border-border-soft bg-surface/90 p-4 backdrop-blur"
+      >
+        <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+          Token
+        </span>
+        <input
+          ref={tokenFileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          className="text-xs text-text-muted file:mr-2 file:rounded-sm file:border-0 file:bg-surface-2 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-text hover:file:bg-surface"
+        />
+        <FieldError>{tokenUploadError}</FieldError>
+        <Button type="submit" variant="secondary" disabled={tokenUploading} className="text-xs">
+          {tokenUploading ? "Enviando..." : "Adicionar token"}
+        </Button>
+      </form>
     </div>
   );
 }

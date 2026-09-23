@@ -6,6 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from app.core.security import decode_access_token
 from app.models.sheet import Sheet
 from app.models.tabletop import Tabletop
+from app.models.token import Token
 from app.models.user import User
 
 bearer_scheme = HTTPBearer()
@@ -64,4 +65,19 @@ def require_sheet_editor(tabletop: Tabletop, sheet: Sheet, user: User) -> None:
         return
     raise HTTPException(
         status.HTTP_403_FORBIDDEN, "Você não tem permissão para editar esta ficha"
+    )
+
+
+async def get_token_or_404(tabletop_id: str, token_id: str) -> Token:
+    token = await Token.get(PydanticObjectId(token_id))
+    if not token or token.tabletop_id != tabletop_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Token não encontrado")
+    return token
+
+
+def require_token_editor(tabletop: Tabletop, token: Token, user: User) -> None:
+    if is_dm(tabletop, user) or token.created_by == str(user.id):
+        return
+    raise HTTPException(
+        status.HTTP_403_FORBIDDEN, "Você não tem permissão para mover/remover este token"
     )
