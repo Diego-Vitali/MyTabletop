@@ -14,8 +14,8 @@ ALLOWED_IMAGE_TYPES = {
 MAX_IMAGE_BYTES = 15 * 1024 * 1024  # 15 MB
 
 
-async def save_scene_image(file: UploadFile) -> str:
-    """Validates and persists an uploaded scene image, returning its stored filename."""
+async def save_image(file: UploadFile) -> str:
+    """Validates and persists an uploaded image, returning its stored filename."""
     ext = ALLOWED_IMAGE_TYPES.get(file.content_type or "")
     if not ext:
         raise HTTPException(
@@ -36,6 +36,6 @@ async def save_scene_image(file: UploadFile) -> str:
     return filename
 
 
-def delete_scene_image(filename: str) -> None:
+def delete_image(filename: str) -> None:
     path = UPLOAD_DIR / filename
     path.unlink(missing_ok=True)

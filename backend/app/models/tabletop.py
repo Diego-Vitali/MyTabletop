@@ -17,7 +17,7 @@ class Tabletop(Document):
     created_by: str
     rulebook: str
     members: list[TabletopMember] = []
-    active_scene_id: str | None = None
+    background_image: str | None = None  # filename under app/core/storage.py's UPLOAD_DIR
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:

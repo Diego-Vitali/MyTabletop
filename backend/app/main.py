@@ -8,11 +8,10 @@ from pymongo import AsyncMongoClient
 
 from app.core.config import settings
 from app.core.storage import UPLOAD_DIR
-from app.models.scene import Scene
 from app.models.sheet import Sheet
 from app.models.tabletop import Tabletop
 from app.models.user import User
-from app.routers import auth, scenes, sheets, tabletops, users
+from app.routers import auth, sheets, tabletops, users, vtt, ws
 
 
 @asynccontextmanager
@@ -20,7 +19,7 @@ async def lifespan(app: FastAPI):
     client = AsyncMongoClient(settings.mongo_uri)
     await init_beanie(
         database=client[settings.mongo_db_name],
-        document_models=[User, Tabletop, Sheet, Scene],
+        document_models=[User, Tabletop, Sheet],
     )
     yield
     await client.close()
@@ -42,7 +41,8 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(tabletops.router)
 app.include_router(sheets.router)
-app.include_router(scenes.router)
+app.include_router(vtt.router)
+app.include_router(ws.router)
 
 
 @app.get("/health")

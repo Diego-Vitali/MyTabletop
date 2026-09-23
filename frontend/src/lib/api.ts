@@ -1,4 +1,5 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8042";
+export const WS_URL = API_URL.replace(/^http/, "ws");
 
 export class ApiError extends Error {
   constructor(
@@ -45,6 +46,10 @@ export const api = {
     request<T>(path, { method: "PATCH", body: JSON.stringify(body), token }),
   del: <T>(path: string, token?: string | null) =>
     request<T>(path, { method: "DELETE", token }),
-  upload: <T>(path: string, formData: FormData, token?: string | null) =>
-    request<T>(path, { method: "POST", body: formData, token }),
+  upload: <T>(
+    path: string,
+    formData: FormData,
+    token?: string | null,
+    method: "POST" | "PUT" = "POST",
+  ) => request<T>(path, { method, body: formData, token }),
 };

@@ -10,11 +10,12 @@ to Foundry VTT). Full vision and roadmap live in [README.md](README.md).
 **Phase 2** (character/NPC sheets) and **Phase 3** (the VTT) are both being
 built incrementally and interleaved, one concept at a time, on explicit
 direction from the project owner — don't assume the next slice (sheets:
-NEX, skills, derived stats, rituals; VTT: tokens, real-time sync) without
-asking. See "Sheet architecture" and "Scene/VTT architecture" below for what
+NEX, skills, derived stats, rituals; VTT: tokens, multi-user cursors) without
+asking. See "Sheet architecture" and "VTT architecture" below for what
 exists today. Phase 4 (the Obsidian-style Markdown GM shield) does not exist
-yet. Tokens-on-a-scene (the interactive VTT canvas) also don't exist yet —
-today's VTT slice is just the DM-swappable background image.
+yet. Tokens-on-a-scene don't exist yet — today's VTT slice is a full-screen
+canvas with a DM-controlled background image, live-synced over WebSocket,
+that every member can independently pan/zoom.
 
 Monorepo layout: `backend/` (FastAPI) and `frontend/` (Next.js), deployed
 together via `docker-compose.yml` at the repo root.
@@ -40,7 +41,7 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 uvicorn app.main:app --reload   # requires a local MongoDB, see MONGO_URI in .env
 pytest                          # run full suite
-pytest tests/test_scenes.py::test_dm_can_switch_active_scene  # single test
+pytest tests/test_vtt.py::test_dm_can_set_background  # single test
 ```
 
 Tests run against `mongomock-motor` (an in-memory Mongo mock), not a real
@@ -128,42 +129,53 @@ via `src/components/AttributesEditor.tsx`, which is meant to be the reusable
 shape for *any* future stat display (resources, skills, NEX), not just
 attributes — extend it rather than building a parallel stat-tile component.
 
-### Scene/VTT architecture (Phase 3, in progress)
+### VTT architecture (Phase 3, in progress)
 
-Only the background-image piece exists so far — no tokens, no canvas
-interaction, no WebSocket sync. `app/models/scene.py` (`Scene`) holds
-`tabletop_id`, `name`, `image_path` (a filename, not a path — see below),
-`created_by`, `created_at`. `Tabletop.active_scene_id` (nullable) points at
-whichever `Scene` is currently "live" for that table; there's no cap on how
-many `Scene`s a tabletop can accumulate, they're a swappable library.
+**The background is not a separate resource** — this was deliberately
+simplified from an earlier "Scene" collection (list/switch/delete) after
+explicit product direction: the VTT background is fixed, singular, and
+un-deletable by anyone (DM included). It's just one field,
+`Tabletop.background_image` (a filename, nullable), replaced in place by
+the DM. There is no scene library, no "activate" endpoint, no delete
+endpoint — don't reintroduce that shape unless asked again.
 
-Image files themselves live on **disk**, not in Mongo (`app/core/storage.py`,
-`UPLOAD_DIR` = `<repo>/backend/uploads/`, a Docker volume in
-`docker-compose.yml` — `uploads_data:/app/uploads` — so they survive
-container recreation). `save_scene_image` validates content-type against an
-allowlist (`ALLOWED_IMAGE_TYPES`: PNG/JPEG/WEBP/GIF) and a 15MB size cap,
-then writes it under a random `uuid4` filename (never trust/reuse the
-uploaded filename). Images are served back by mounting `StaticFiles` at
-`/uploads` in `app/main.py` — `Scene.image_path` is just the filename;
-`ScenePublic.image_url` is the browsable path (`/uploads/{filename}`), and
-the frontend prepends `API_URL` to it (see `SceneBoard.tsx`) since it's a
-relative path from the backend's own origin, not the frontend's.
-
-Permissions mirror sheets: only a DM can upload/activate/delete a scene
-(`require_dm`); any member can view the active one. Uploading a scene
-immediately makes it active (`scene_service.create_scene`); switching
-between previously-uploaded scenes is a separate
-`PATCH .../scenes/{id}/activate` call. Deleting the currently-active scene
-clears `Tabletop.active_scene_id` back to `None` rather than leaving it
-dangling — `scene_service.delete_scene` handles both the DB row and the file
-on disk together, keep them paired if you touch this.
-
-The upload endpoint is `multipart/form-data` (`Form`/`File` params, not a
-Pydantic body) — this is the one place in the API that isn't JSON in/out;
-`requires python-multipart` (in `pyproject.toml`) to parse it. On the
-frontend, `api.upload()` in `src/lib/api.ts` exists specifically to send a
-`FormData` body without the default `Content-Type: application/json` header
-`request()` normally adds (fetch needs to set its own multipart boundary).
+- `PUT /tabletops/{id}/vtt/background` (`app/routers/vtt.py`, DM-only,
+  `multipart/form-data` with an `image` file — this is the one endpoint in
+  the API that isn't JSON in/out, hence `python-multipart` in
+  `pyproject.toml`) replaces the background: `vtt_service.set_background`
+  saves the new file, points `Tabletop.background_image` at it, deletes the
+  old file (no history kept), and broadcasts the change over WebSocket.
+- Images live on **disk**, not in Mongo (`app/core/storage.py`, `UPLOAD_DIR`
+  = `<repo>/backend/uploads/`, a Docker volume — `uploads_data:/app/uploads`
+  in `docker-compose.yml` — so they survive container recreation).
+  `save_image` validates content-type against an allowlist
+  (`ALLOWED_IMAGE_TYPES`: PNG/JPEG/WEBP/GIF) and a 15MB cap, then writes it
+  under a random `uuid4` filename (never trust/reuse the uploaded filename).
+  Served back by mounting `StaticFiles` at `/uploads` in `app/main.py`;
+  `TabletopPublic.background_image_url` is the browsable path
+  (`/uploads/{filename}`) — a relative path from the *backend's* origin, so
+  the frontend prepends `API_URL` to it, not its own origin.
+- **Real-time sync** (`app/core/ws_manager.py` + `app/routers/ws.py`): a
+  single in-memory `ConnectionManager` keyed by `tabletop_id` — fine for one
+  backend process (this project's local self-hosted target), would need a
+  pub/sub backend to run more than one. `GET /ws/tabletops/{id}` (note: a
+  WebSocket route, not visible in `/docs`/OpenAPI) authenticates via a
+  `?token=<jwt>` query param rather than an `Authorization` header, because
+  the browser's native `WebSocket` constructor can't set custom headers.
+  `set_background` broadcasts `{"type": "background_updated",
+  "background_image_url": "..."}` to everyone connected to that tabletop's
+  room; there's no other message type yet (no client→server messages are
+  expected — the endpoint just blocks on `receive_text()` to detect
+  disconnects). This is the first WebSocket usage in the app and the
+  pattern (one manager, one room per tabletop, JSON `{"type": ...}`
+  messages) is meant to be extended for tokens later, not replaced.
+- Tests: `tests/test_vtt.py` covers the HTTP endpoint; `tests/test_ws_manager.py`
+  unit-tests `ConnectionManager` directly against fake WebSocket objects
+  (`send_json`) rather than through the full ASGI stack — our async
+  `httpx`-based test `client` fixture doesn't support WebSocket upgrades, so
+  there's no automated test of the endpoint's auth/broadcast wiring end to
+  end; that's been verified manually instead (two sessions/tabs, one
+  uploading, one watching it update live).
 
 ## Frontend architecture
 
@@ -190,16 +202,29 @@ not cookies/middleware — there is no server-side session. The pattern:
   logged-in user in it (see `src/app/tabletops/page.tsx` and
   `src/components/TabletopDetail.tsx`).
 - Dynamic routes with an authenticated, client-fetched detail view are split
-  in two: `app/tabletops/[id]/page.tsx` is a plain **Server Component**
-  that only `await`s the `params` Promise and passes the plain `id` string
-  down to a **Client Component** (`components/TabletopDetail.tsx`) that does
-  the actual fetching/rendering. Follow this split for any future dynamic,
-  client-rendered route — a Client Component page can't `await params`
-  directly.
+  in two: e.g. `app/(app)/tabletops/[id]/page.tsx` is a plain **Server
+  Component** that only `await`s the `params` Promise and passes the plain
+  `id` string down to a **Client Component** (`components/TabletopDetail.tsx`)
+  that does the actual fetching/rendering. Follow this split for any future
+  dynamic, client-rendered route — a Client Component page can't `await
+  params` directly.
 - `NEXT_PUBLIC_API_URL` is baked in at Next.js **build time** (see the
   `ARG`/`ENV` in `frontend/Dockerfile` and the build `args` in
   `docker-compose.yml`), not read at runtime — changing it requires a
   rebuild of the frontend image/bundle, not just a container restart.
+
+**Route groups**: `src/app/(app)/` holds every page that gets the normal
+chrome (`NavBar` + centered `max-w-4xl` container, applied by
+`(app)/layout.tsx`). `src/app/tabletops/[id]/vtt/page.tsx` is deliberately
+**outside** that group — it only inherits the root `layout.tsx` (fonts +
+`AuthProvider`, nothing else), because the VTT is a full-viewport canvas
+with no navbar. `(app)` doesn't appear in the URL (`/tabletops` either
+way), so when adding a new page ask whether it wants the shared chrome —
+if yes it goes in `(app)/`, if it needs to be edge-to-edge (like the VTT)
+it goes outside. Don't add a second *root* layout (a group with its own
+`<html>`/`<body>`) for this — Next.js forces a full page reload navigating
+between different root layouts, and this project only needs a different
+nested layout, not a different root.
 
 ### Important: this is Next.js 16, not the Next.js in your training data
 

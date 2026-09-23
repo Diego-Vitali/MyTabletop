@@ -107,7 +107,7 @@ function TabletopDetailContent({ tabletopId }: { tabletopId: string }) {
         </div>
         <div className="flex gap-3">
           <Link href={`/tabletops/${tabletopId}/vtt`}>
-            <Button variant="secondary">Cena</Button>
+            <Button variant="primary">Acessar VTT</Button>
           </Link>
           <Link href={`/tabletops/${tabletopId}/sheets`}>
             <Button variant="secondary">Fichas</Button>

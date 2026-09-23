@@ -1,6 +1,6 @@
-import { SceneBoard } from "@/components/SceneBoard";
+import { VttView } from "@/components/VttView";
 
 export default async function VttPage(props: PageProps<"/tabletops/[id]/vtt">) {
   const { id } = await props.params;
-  return <SceneBoard tabletopId={id} />;
+  return <VttView tabletopId={id} />;
 }

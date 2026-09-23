@@ -22,7 +22,7 @@ class TabletopPublic(BaseModel):
     created_by: str
     rulebook: str
     members: list[TabletopMember]
-    active_scene_id: str | None
+    background_image_url: str | None
     created_at: datetime
 
     @classmethod
@@ -33,7 +33,9 @@ class TabletopPublic(BaseModel):
             created_by=tabletop.created_by,
             rulebook=tabletop.rulebook,
             members=tabletop.members,
-            active_scene_id=tabletop.active_scene_id,
+            background_image_url=(
+                f"/uploads/{tabletop.background_image}" if tabletop.background_image else None
+            ),
             created_at=tabletop.created_at,
         )
 

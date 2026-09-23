@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Instrument_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
-import { NavBar } from "@/components/NavBar";
 
 const fontUi = Instrument_Sans({
   variable: "--font-ui",
@@ -27,11 +26,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="pt-BR"
       className={`${fontUi.variable} ${fontData.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-bg text-text">
-        <AuthProvider>
-          <NavBar />
-          <main className="flex-1 mx-auto w-full max-w-4xl px-4 py-10">{children}</main>
-        </AuthProvider>
+      <body className="min-h-full bg-bg text-text">
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

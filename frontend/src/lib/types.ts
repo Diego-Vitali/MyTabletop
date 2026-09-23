@@ -27,7 +27,7 @@ export interface TabletopPublic {
   created_by: string;
   rulebook: string;
   members: TabletopMember[];
-  active_scene_id: string | null;
+  background_image_url: string | null;
   created_at: string;
 }
 
@@ -47,15 +47,6 @@ export interface SheetPublic {
   attributes: Record<string, number>;
   created_at: string;
   updated_at: string;
-}
-
-export interface ScenePublic {
-  id: string;
-  tabletop_id: string;
-  name: string;
-  image_url: string;
-  created_by: string;
-  created_at: string;
 }
 
 /** Mirrors backend RULEBOOK_REGISTRY attribute definitions (app/models/rulebooks.py). */
