@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { Crown, FileText, Map, UserMinus, UserRound } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api";
 import type { TabletopPublic, Role } from "@/lib/types";
@@ -105,12 +106,18 @@ function TabletopDetailContent({ tabletopId }: { tabletopId: string }) {
           <h1 className="text-2xl font-bold tracking-tight">{tabletop.name}</h1>
           <p className="text-text-muted">{rulebookLabel}</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-1 rounded-md border border-border-soft bg-surface/80 p-1">
           <Link href={`/tabletops/${tabletopId}/vtt`}>
-            <Button variant="primary">Acessar VTT</Button>
+            <Button variant="primary" className="flex items-center gap-1.5">
+              <Map size={16} />
+              Acessar VTT
+            </Button>
           </Link>
           <Link href={`/tabletops/${tabletopId}/sheets`}>
-            <Button variant="secondary">Fichas</Button>
+            <Button variant="secondary" className="flex items-center gap-1.5">
+              <FileText size={16} />
+              Fichas
+            </Button>
           </Link>
         </div>
       </div>
@@ -126,18 +133,22 @@ function TabletopDetailContent({ tabletopId }: { tabletopId: string }) {
                   <Badge variant={m.role === "dm" ? "accent" : "neutral"}>{m.role}</Badge>
                 </span>
                 {iAmDm && (
-                  <div className="flex gap-4 text-sm">
+                  <div className="flex items-center gap-1">
                     <button
-                      className="text-text-muted transition hover:text-text"
+                      type="button"
+                      title={m.role === "dm" ? "Rebaixar a player" : "Promover a DM"}
                       onClick={() => changeRole(m.user_id, m.role === "dm" ? "player" : "dm")}
+                      className="flex h-8 w-8 items-center justify-center rounded-sm text-text-muted transition hover:bg-surface-2 hover:text-text"
                     >
-                      {m.role === "dm" ? "Rebaixar a player" : "Promover a DM"}
+                      {m.role === "dm" ? <UserRound size={16} /> : <Crown size={16} />}
                     </button>
                     <button
-                      className="text-danger transition hover:text-danger/80"
+                      type="button"
+                      title="Remover"
                       onClick={() => removeMember(m.user_id)}
+                      className="flex h-8 w-8 items-center justify-center rounded-sm text-danger transition hover:bg-surface-2"
                     >
-                      Remover
+                      <UserMinus size={16} />
                     </button>
                   </div>
                 )}

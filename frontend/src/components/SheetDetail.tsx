@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api";
 import type { SheetPublic, TabletopPublic } from "@/lib/types";
@@ -88,6 +90,14 @@ function SheetDetailContent({ tabletopId, sheetId }: { tabletopId: string; sheet
 
   return (
     <div className="flex flex-col gap-8">
+      <Link
+        href={`/tabletops/${tabletopId}/sheets`}
+        title="Voltar para fichas"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-sm text-text-muted transition hover:bg-surface-2 hover:text-text"
+      >
+        <ArrowLeft size={16} />
+      </Link>
+
       <div className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           {canEdit ? (
@@ -116,10 +126,17 @@ function SheetDetailContent({ tabletopId, sheetId }: { tabletopId: string; sheet
         <div className="flex flex-col gap-3">
           <FieldError>{saveError}</FieldError>
           <div className="flex gap-3">
-            <Button onClick={onSave} disabled={saving}>
+            <Button onClick={onSave} disabled={saving} className="flex items-center gap-1.5">
+              <Save size={16} />
               {saving ? "Salvando..." : "Salvar"}
             </Button>
-            <Button variant="danger" onClick={onDelete} disabled={deleting}>
+            <Button
+              variant="danger"
+              onClick={onDelete}
+              disabled={deleting}
+              className="flex items-center gap-1.5"
+            >
+              <Trash2 size={16} />
               {deleting ? "Removendo..." : "Remover ficha"}
             </Button>
           </div>

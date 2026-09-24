@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api";
 import type { TabletopPublic } from "@/lib/types";
@@ -94,7 +95,8 @@ function TabletopsPageContent() {
           ))}
         </Select>
         <FieldError>{error}</FieldError>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting} className="flex items-center gap-1.5">
+          <Plus size={16} />
           {submitting ? "Criando..." : "Criar mesa"}
         </Button>
       </Card>

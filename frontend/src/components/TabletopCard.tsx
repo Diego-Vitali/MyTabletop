@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Users } from "lucide-react";
 import type { TabletopPublic } from "@/lib/types";
 import { RULEBOOKS } from "@/lib/types";
 import { Badge, Card } from "@/components/ui";
@@ -21,7 +22,8 @@ export function TabletopCard({
           {myRole && <Badge variant={myRole === "dm" ? "accent" : "neutral"}>{myRole}</Badge>}
         </div>
         <span className="text-sm text-text-muted">{rulebookLabel}</span>
-        <span className="font-mono text-xs text-text-faint">
+        <span className="flex items-center gap-1.5 font-mono text-xs text-text-faint">
+          <Users size={13} />
           {tabletop.members.length} {tabletop.members.length === 1 ? "membro" : "membros"}
         </span>
       </Card>

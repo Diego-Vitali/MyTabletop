@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { UserPlus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
 import { Button, Card, FieldError, Input } from "@/components/ui";
@@ -58,7 +59,12 @@ export default function RegisterPage() {
           required
         />
         <FieldError>{error}</FieldError>
-        <Button type="submit" disabled={submitting} className="w-full justify-center">
+        <Button
+          type="submit"
+          disabled={submitting}
+          className="flex w-full items-center justify-center gap-1.5"
+        >
+          <UserPlus size={16} />
           {submitting ? "Criando..." : "Criar conta"}
         </Button>
       </form>

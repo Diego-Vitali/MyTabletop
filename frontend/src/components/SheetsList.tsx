@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { ArrowLeft, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api";
 import type { SheetKind, SheetPublic, TabletopPublic } from "@/lib/types";
@@ -78,7 +79,14 @@ function SheetsListContent({ tabletopId }: { tabletopId: string }) {
   return (
     <div className="flex flex-col gap-10">
       <div>
-        <span className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-faint">
+        <Link
+          href={`/tabletops/${tabletopId}`}
+          title="Voltar para a mesa"
+          className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-sm text-text-muted transition hover:bg-surface-2 hover:text-text"
+        >
+          <ArrowLeft size={16} />
+        </Link>
+        <span className="block font-mono text-[11px] uppercase tracking-[0.14em] text-text-faint">
           {tabletop.name}
         </span>
         <h1 className="text-2xl font-bold tracking-tight">Fichas</h1>
@@ -113,7 +121,8 @@ function SheetsListContent({ tabletopId }: { tabletopId: string }) {
         <Input placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} required />
         <AttributesEditor rulebook={tabletop.rulebook} value={attributes} onChange={setAttributes} />
         <FieldError>{createError}</FieldError>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting} className="flex items-center gap-1.5">
+          <Plus size={16} />
           {submitting ? "Criando..." : "Criar ficha"}
         </Button>
       </Card>
