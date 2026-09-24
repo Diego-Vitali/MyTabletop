@@ -21,12 +21,13 @@ class ConnectionManager:
         if not room:
             self._rooms.pop(tabletop_id, None)
 
-    async def broadcast(self, tabletop_id: str, message: dict) -> None:
+    async def broadcast(self, tabletop_id: str, message: dict, exclude: WebSocket | None = None) -> None:
         for ws in list(self._rooms.get(tabletop_id, ())):
+            if ws is exclude:
+                continue
             try:
                 await ws.send_json(message)
             except Exception:
                 self.disconnect(tabletop_id, ws)
-
 
 manager = ConnectionManager()

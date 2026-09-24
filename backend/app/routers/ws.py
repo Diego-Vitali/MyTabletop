@@ -33,10 +33,18 @@ async def tabletop_ws(websocket: WebSocket, tabletop_id: str) -> None:
     await manager.connect(tabletop_id, websocket)
     try:
         while True:
-            # Clients don't send anything yet — this just blocks until they
-            # disconnect, which is how FastAPI/Starlette detects a closed
-            # WebSocket (receive raises WebSocketDisconnect).
-            await websocket.receive_text()
+            data = await websocket.receive_json()
+            if data.get("type") == "token_move_live":
+                await manager.broadcast(
+                    tabletop_id,
+                    {
+                        "type": "token_moved",
+                        "token_id": data.get("token_id"),
+                        "x": data.get("x"),
+                        "y": data.get("y")
+                    },
+                    exclude=websocket,
+                )
     except WebSocketDisconnect:
         pass
     finally:
