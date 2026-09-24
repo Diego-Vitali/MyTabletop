@@ -4,12 +4,19 @@ from app.core.deps import (
     get_current_user,
     get_tabletop_or_404,
     get_token_or_404,
+    get_token_template_or_404,
     require_member,
     require_token_editor,
 )
 from app.models.user import User
-from app.schemas.token import TokenMove, TokenPublic
-from app.services.token_service import create_token, delete_token, list_tokens, move_token
+from app.schemas.token import TokenPlaceFromTemplate, TokenPublic, TokenUpdate
+from app.services.token_service import (
+    create_token,
+    create_token_from_template,
+    delete_token,
+    list_tokens,
+    update_token,
+)
 
 router = APIRouter(prefix="/tabletops/{tabletop_id}/vtt/tokens", tags=["tokens"])
 
@@ -28,6 +35,20 @@ async def create(
     return TokenPublic.from_token(token)
 
 
+@router.post("/from-template/{template_id}", response_model=TokenPublic, status_code=201)
+async def create_from_template(
+    tabletop_id: str,
+    template_id: str,
+    data: TokenPlaceFromTemplate,
+    user: User = Depends(get_current_user),
+) -> TokenPublic:
+    tabletop = await get_tabletop_or_404(tabletop_id)
+    require_member(tabletop, user)
+    template = await get_token_template_or_404(tabletop_id, template_id)
+    token = await create_token_from_template(tabletop, template, user, data.x, data.y)
+    return TokenPublic.from_token(token)
+
+
 @router.get("", response_model=list[TokenPublic])
 async def list_all(tabletop_id: str, user: User = Depends(get_current_user)) -> list[TokenPublic]:
     tabletop = await get_tabletop_or_404(tabletop_id)
@@ -37,17 +58,17 @@ async def list_all(tabletop_id: str, user: User = Depends(get_current_user)) -> 
 
 
 @router.patch("/{token_id}", response_model=TokenPublic)
-async def move(
+async def update(
     tabletop_id: str,
     token_id: str,
-    data: TokenMove,
+    data: TokenUpdate,
     user: User = Depends(get_current_user),
 ) -> TokenPublic:
     tabletop = await get_tabletop_or_404(tabletop_id)
     require_member(tabletop, user)
     token = await get_token_or_404(tabletop_id, token_id)
     require_token_editor(tabletop, token, user)
-    token = await move_token(token, data.x, data.y)
+    token = await update_token(token, data)
     return TokenPublic.from_token(token)
 
 

@@ -55,6 +55,9 @@ export interface TokenPublic {
   image_url: string;
   x: number;
   y: number;
+  size: number | null;
+  flipped_x: boolean;
+  template_id: string | null;
   created_by: string;
   created_at: string;
 }
@@ -63,6 +66,8 @@ export interface TokenSnapshot {
   image_url: string;
   x: number;
   y: number;
+  size: number | null;
+  flipped_x: boolean;
 }
 
 export interface MapHistoryEntryPublic {
@@ -71,6 +76,49 @@ export interface MapHistoryEntryPublic {
   image_url: string;
   tokens: TokenSnapshot[];
   replaced_by: string;
+  created_at: string;
+}
+
+export type FolderKind = "scene" | "token";
+
+export interface FolderPublic {
+  id: string;
+  tabletop_id: string;
+  kind: FolderKind;
+  name: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface ScenePublic {
+  id: string;
+  tabletop_id: string;
+  folder_id: string | null;
+  name: string;
+  image_url: string;
+  is_active: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+export interface TokenTemplatePublic {
+  id: string;
+  tabletop_id: string;
+  folder_id: string | null;
+  name: string;
+  image_url: string;
+  created_by: string;
+  created_at: string;
+}
+
+export interface MapNotePublic {
+  id: string;
+  tabletop_id: string;
+  scene_id: string;
+  x: number;
+  y: number;
+  text: string;
+  created_by: string;
   created_at: string;
 }
 

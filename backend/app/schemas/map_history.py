@@ -13,6 +13,8 @@ class TokenSnapshotPublic(BaseModel):
     image_url: str
     x: float
     y: float
+    size: float | None
+    flipped_x: bool
 
 
 class MapHistoryEntryPublic(BaseModel):
@@ -30,7 +32,13 @@ class MapHistoryEntryPublic(BaseModel):
             tabletop_id=entry.tabletop_id,
             image_url=f"/uploads/{entry.image_path}",
             tokens=[
-                TokenSnapshotPublic(image_url=f"/uploads/{t.image_path}", x=t.x, y=t.y)
+                TokenSnapshotPublic(
+                    image_url=f"/uploads/{t.image_path}",
+                    x=t.x,
+                    y=t.y,
+                    size=t.size,
+                    flipped_x=t.flipped_x,
+                )
                 for t in entry.tokens
             ],
             replaced_by=entry.replaced_by,

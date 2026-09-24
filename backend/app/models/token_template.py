@@ -4,16 +4,13 @@ from beanie import Document
 from pydantic import Field
 
 
-class Token(Document):
+class TokenTemplate(Document):
     tabletop_id: str
+    folder_id: str | None = None
+    name: str
     image_path: str  # e.g. "tokens/<uuid>.png", see app/core/storage.py
-    x: float
-    y: float
-    size: float | None = None  # px in the background image's natural pixel space; None = frontend default
-    flipped_x: bool = False
-    template_id: str | None = None  # the TokenTemplate this was placed from, if any
     created_by: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:
-        name = "tokens"
+        name = "token_templates"

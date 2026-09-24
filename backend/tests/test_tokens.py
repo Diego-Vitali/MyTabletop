@@ -120,50 +120,61 @@ async def test_dm_can_move_and_delete_any_token(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_replacing_background_archives_tokens_to_history_and_clears_them(
-    client, auth_headers
-):
-    dm_token, dm_id = await _register(client, "dm4")
+async def test_partial_patch_resizes_and_flips_a_token(client, auth_headers):
+    dm_token, _ = await _register(client, "dm4")
     tabletop_id = await _create_tabletop(client, dm_token)
 
-    first_map = await client.put(
-        f"/tabletops/{tabletop_id}/vtt/background",
-        files=_fake_image(),
-        headers=auth_headers(dm_token),
-    )
-    first_map_url = first_map.json()["background_image_url"]
-
-    await client.post(
+    created = await client.post(
         f"/tabletops/{tabletop_id}/vtt/tokens",
-        data={"x": "12", "y": "34"},
+        data={"x": "0", "y": "0"},
         files=_fake_image(),
         headers=auth_headers(dm_token),
     )
+    token_id = created.json()["id"]
+    assert created.json()["size"] is None
+    assert created.json()["flipped_x"] is False
 
-    # no history yet — nothing has been replaced
-    empty_history = await client.get(
-        f"/tabletops/{tabletop_id}/vtt/history", headers=auth_headers(dm_token)
-    )
-    assert empty_history.json() == []
-
-    await client.put(
-        f"/tabletops/{tabletop_id}/vtt/background",
-        files=_fake_image(),
+    resized = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"size": 96},
         headers=auth_headers(dm_token),
     )
+    assert resized.status_code == 200
+    assert resized.json()["size"] == 96
+    # x/y untouched by a resize-only patch
+    assert resized.json()["x"] == 0
 
-    history = await client.get(
-        f"/tabletops/{tabletop_id}/vtt/history", headers=auth_headers(dm_token)
+    flipped = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"flipped_x": True},
+        headers=auth_headers(dm_token),
     )
-    entries = history.json()
-    assert len(entries) == 1
-    assert entries[0]["image_url"] == first_map_url
-    assert entries[0]["replaced_by"] == dm_id
-    assert len(entries[0]["tokens"]) == 1
-    assert entries[0]["tokens"][0]["x"] == 12
-    assert entries[0]["tokens"][0]["y"] == 34
+    assert flipped.status_code == 200
+    assert flipped.json()["flipped_x"] is True
+    assert flipped.json()["size"] == 96
 
-    live_tokens = await client.get(
-        f"/tabletops/{tabletop_id}/vtt/tokens", headers=auth_headers(dm_token)
+
+@pytest.mark.asyncio
+async def test_place_token_from_template(client, auth_headers):
+    dm_token, _ = await _register(client, "dm5")
+    tabletop_id = await _create_tabletop(client, dm_token)
+
+    template = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/token-templates",
+        data={"name": "Goblin"},
+        files={"image": ("goblin.png", b"\x89PNG\r\n\x1a\n" + b"x", "image/png")},
+        headers=auth_headers(dm_token),
     )
-    assert live_tokens.json() == []
+    template_id = template.json()["id"]
+
+    placed = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens/from-template/{template_id}",
+        json={"x": 10, "y": 20},
+        headers=auth_headers(dm_token),
+    )
+    assert placed.status_code == 201
+    body = placed.json()
+    assert body["template_id"] == template_id
+    assert body["image_url"] == template.json()["image_url"]
+    assert body["x"] == 10
+    assert body["y"] == 20

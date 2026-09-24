@@ -8,13 +8,15 @@ class TokenSnapshot(BaseModel):
     image_path: str
     x: float
     y: float
+    size: float | None = None
+    flipped_x: bool = False
 
 
 class MapHistoryEntry(Document):
-    """A permanent record of a map that was replaced, plus where every token
-    was sitting on it at that moment. Created automatically by
-    vtt_service.set_background right before it overwrites
-    Tabletop.background_image — never created or edited directly."""
+    """A permanent record of a scene that was swapped out as the active one,
+    plus where every token was sitting on it at that moment. Created
+    automatically by vtt_service.activate_scene right before it deactivates
+    the outgoing scene — never created or edited directly."""
 
     tabletop_id: str
     image_path: str  # the outgoing map, e.g. "maps/<uuid>.png"
