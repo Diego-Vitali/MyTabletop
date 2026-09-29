@@ -92,6 +92,8 @@ async def update_scene(scene: Scene, data: SceneUpdate) -> Scene:
         scene.name = data.name
     if "folder_id" in data.model_fields_set:
         scene.folder_id = data.folder_id
+    if data.grid is not None:
+        scene.grid = data.grid
     await scene.save()
 
     await manager.broadcast(

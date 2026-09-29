@@ -2,11 +2,20 @@
 
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
-import { DoorOpen, History as HistoryIcon, Map as MapIcon, Shapes, StickyNote, Users } from "lucide-react";
+import {
+  DoorOpen,
+  Grid3x3,
+  History as HistoryIcon,
+  Map as MapIcon,
+  Shapes,
+  StickyNote,
+  Users,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError, API_URL, WS_URL } from "@/lib/api";
 import type {
   FolderPublic,
+  GridConfig,
   MapHistoryEntryPublic,
   MapNotePublic,
   ScenePublic,
@@ -14,9 +23,11 @@ import type {
   TokenPublic,
   TokenTemplatePublic,
 } from "@/lib/types";
+import { DEFAULT_GRID } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Badge, Button, ToolbarIconButton } from "@/components/ui";
+import { Badge, Button, Input, Select, ToolbarIconButton } from "@/components/ui";
 import { DirectoryPanel } from "@/components/vtt/DirectoryPanel";
+import { GridLayer, snapToGrid } from "@/components/vtt/GridLayer";
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
@@ -27,7 +38,8 @@ const MAX_TOKEN_SIZE = 512;
 const NOTE_SIZE = 24;
 
 type Transform = { x: number; y: number; scale: number };
-type PanelId = "members" | "history" | "scenes" | "tokens" | "notes";
+type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid";
+type RulerLine = { startX: number; startY: number; endX: number; endY: number };
 
 function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const { token, user } = useAuth();
@@ -43,6 +55,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: 1 });
+  const [bgSize, setBgSize] = useState<{ width: number; height: number } | null>(null);
+  const [ruler, setRuler] = useState<RulerLine | null>(null);
+  const rulerRef = useRef<{ startX: number; startY: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(
     null,
@@ -198,6 +213,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   const canMoveToken = (t: TokenPublic) => iAmDm || t.created_by === user?.id;
 
+  const activeScene = scenes.find((s) => s.is_active) ?? null;
+  const grid = activeScene?.grid ?? DEFAULT_GRID;
+  const pxToDistanceLabel = (px: number) => {
+    if (!grid.size) return `${Math.round(px)}px`;
+    const units = px / grid.size;
+    return `${units.toFixed(1)} × ${grid.unit_label}`;
+  };
+
   // Keyboard shortcut: F flips the selected token horizontally.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -234,8 +257,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onImageLoad = (e: SyntheticEvent<HTMLImageElement>) => {
-    if (centeredRef.current || !containerRef.current) return;
     const img = e.currentTarget;
+    setBgSize({ width: img.naturalWidth, height: img.naturalHeight });
+    if (centeredRef.current || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const scale = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight, 1);
     setTransform({
@@ -244,6 +268,21 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       scale,
     });
     centeredRef.current = true;
+  };
+
+  const updateGrid = async (patch: Partial<GridConfig>) => {
+    if (!activeScene) return;
+    const nextGrid: GridConfig = { ...activeScene.grid, ...patch };
+    try {
+      const updated = await api.patch<ScenePublic>(
+        `/tabletops/${tabletopId}/vtt/scenes/${activeScene.id}`,
+        { grid: nextGrid },
+        token,
+      );
+      setScenes((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    } catch {
+      // ignore
+    }
   };
 
   const onWheel = (e: React.WheelEvent) => {
@@ -283,6 +322,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       placeNote(x, y);
       return;
     }
+    if (e.shiftKey && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      rulerRef.current = { startX: x, startY: y };
+      setRuler({ startX: x, startY: y, endX: x, endY: y });
+      return;
+    }
     setOpenPanel(null);
     setSelectedTokenId(null);
     setOpenNoteId(null);
@@ -296,6 +344,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (rulerRef.current && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      setRuler({ startX: rulerRef.current.startX, startY: rulerRef.current.startY, endX: x, endY: y });
+      return;
+    }
     if (!dragRef.current) return;
     const { startX, startY, originX, originY } = dragRef.current;
     setTransform((prev) => ({
@@ -307,6 +362,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   const onPointerUp = () => {
     dragRef.current = null;
+    if (rulerRef.current) {
+      rulerRef.current = null;
+      setRuler(null);
+    }
   };
 
   const onTokenPointerDown = (e: React.PointerEvent, t: TokenPublic) => {
@@ -340,12 +399,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     tokenDragRef.current = null;
     const moved = tokens.find((t) => t.id === drag.id);
     if (!moved) return;
+    const { x, y } = snapToGrid(moved.x, moved.y, grid);
+    setTokens((prev) => prev.map((t) => (t.id === drag.id ? { ...t, x, y } : t)));
     try {
-      await api.patch<TokenPublic>(
-        `/tabletops/${tabletopId}/vtt/tokens/${drag.id}`,
-        { x: moved.x, y: moved.y },
-        token,
-      );
+      await api.patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${drag.id}`, { x, y }, token);
     } catch {
       // best effort — a future WS message will correct any drift
     }
@@ -695,6 +752,29 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               className="pointer-events-none max-w-none select-none"
             />
           )}
+          {bgSize && <GridLayer grid={grid} width={bgSize.width} height={bgSize.height} />}
+          {ruler && (
+            <svg
+              className="pointer-events-none absolute"
+              style={{
+                left: Math.min(ruler.startX, ruler.endX),
+                top: Math.min(ruler.startY, ruler.endY),
+                width: Math.abs(ruler.endX - ruler.startX) || 1,
+                height: Math.abs(ruler.endY - ruler.startY) || 1,
+                overflow: "visible",
+              }}
+            >
+              <line
+                x1={ruler.startX - Math.min(ruler.startX, ruler.endX)}
+                y1={ruler.startY - Math.min(ruler.startY, ruler.endY)}
+                x2={ruler.endX - Math.min(ruler.startX, ruler.endX)}
+                y2={ruler.endY - Math.min(ruler.startY, ruler.endY)}
+                stroke="var(--color-accent)"
+                strokeWidth={2 / transform.scale}
+                strokeDasharray={`${6 / transform.scale} ${4 / transform.scale}`}
+              />
+            </svg>
+          )}
           {tokens.map((t) => {
             const size = t.size ?? TOKEN_SIZE;
             const selected = t.id === selectedTokenId;
@@ -790,6 +870,17 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             Clique no mapa para posicionar a anotação
           </div>
         )}
+        {ruler && (
+          <div
+            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border-soft bg-surface/95 px-2 py-1 font-mono text-[10px] text-text backdrop-blur"
+            style={{
+              left: transform.x + ((ruler.startX + ruler.endX) / 2) * transform.scale,
+              top: transform.y + ((ruler.startY + ruler.endY) / 2) * transform.scale - 16,
+            }}
+          >
+            {pxToDistanceLabel(Math.hypot(ruler.endX - ruler.startX, ruler.endY - ruler.startY))}
+          </div>
+        )}
       </div>
 
       {/* Top-left toolbar: navigation + directories */}
@@ -816,6 +907,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             onClick={() => togglePanel("scenes")}
           >
             <MapIcon size={18} />
+          </ToolbarIconButton>
+        )}
+        {iAmDm && (
+          <ToolbarIconButton
+            title="Grade"
+            active={openPanel === "grid"}
+            disabled={!activeScene}
+            onClick={() => togglePanel("grid")}
+          >
+            <Grid3x3 size={18} />
           </ToolbarIconButton>
         )}
         <ToolbarIconButton
@@ -892,6 +993,94 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               )
             }
           />
+        </div>
+      )}
+
+      {openPanel === "grid" && activeScene && (
+        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            Grade
+          </span>
+          <label className="flex items-center justify-between text-sm">
+            Ativada
+            <input
+              type="checkbox"
+              checked={grid.enabled}
+              onChange={(e) => updateGrid({ enabled: e.target.checked })}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Tipo
+            <Select
+              value={grid.type}
+              onChange={(e) => updateGrid({ type: e.target.value as GridConfig["type"] })}
+              className="py-1.5 text-xs"
+            >
+              <option value="square">Quadrada</option>
+              <option value="hex">Hexagonal</option>
+            </Select>
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Tamanho da célula (px)
+            <Input
+              type="number"
+              min={8}
+              value={grid.size}
+              onChange={(e) => updateGrid({ size: Number(e.target.value) || grid.size })}
+              className="py-1.5 text-xs"
+            />
+          </label>
+          <div className="flex gap-2">
+            <label className="flex flex-1 flex-col gap-1 text-xs text-text-muted">
+              Offset X
+              <Input
+                type="number"
+                value={grid.offset_x}
+                onChange={(e) => updateGrid({ offset_x: Number(e.target.value) || 0 })}
+                className="py-1.5 text-xs"
+              />
+            </label>
+            <label className="flex flex-1 flex-col gap-1 text-xs text-text-muted">
+              Offset Y
+              <Input
+                type="number"
+                value={grid.offset_y}
+                onChange={(e) => updateGrid({ offset_y: Number(e.target.value) || 0 })}
+                className="py-1.5 text-xs"
+              />
+            </label>
+          </div>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Opacidade
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={grid.opacity}
+              onChange={(e) => updateGrid({ opacity: Number(e.target.value) })}
+            />
+          </label>
+          <label className="flex items-center justify-between text-sm">
+            Encaixar tokens na grade
+            <input
+              type="checkbox"
+              checked={grid.snap_enabled}
+              onChange={(e) => updateGrid({ snap_enabled: e.target.checked })}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Unidade de medida
+            <Input
+              value={grid.unit_label}
+              onChange={(e) => updateGrid({ unit_label: e.target.value })}
+              placeholder="ex.: 1,5m"
+              className="py-1.5 text-xs"
+            />
+          </label>
+          <p className="text-[10px] text-text-faint">
+            Shift + arraste no mapa para medir distância.
+          </p>
         </div>
       )}
 

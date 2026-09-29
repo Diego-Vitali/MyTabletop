@@ -90,6 +90,28 @@ export interface FolderPublic {
   created_at: string;
 }
 
+export interface GridConfig {
+  enabled: boolean;
+  type: "square" | "hex";
+  size: number;
+  offset_x: number;
+  offset_y: number;
+  opacity: number;
+  snap_enabled: boolean;
+  unit_label: string;
+}
+
+export const DEFAULT_GRID: GridConfig = {
+  enabled: false,
+  type: "square",
+  size: 70,
+  offset_x: 0,
+  offset_y: 0,
+  opacity: 0.5,
+  snap_enabled: true,
+  unit_label: "1,5m",
+};
+
 export interface ScenePublic {
   id: string;
   tabletop_id: string;
@@ -97,6 +119,7 @@ export interface ScenePublic {
   name: string;
   image_url: string;
   is_active: boolean;
+  grid: GridConfig;
   created_by: string;
   created_at: string;
 }
