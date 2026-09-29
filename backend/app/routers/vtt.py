@@ -10,8 +10,8 @@ from app.core.deps import (
 from app.models.map_history import MapHistoryEntry
 from app.models.user import User
 from app.schemas.map_history import MapHistoryEntryPublic
-from app.schemas.scene import ScenePublic, SceneUpdate
-from app.services.vtt_service import activate_scene, create_scene, delete_scene, list_scenes, update_scene
+from app.schemas.scene import SceneFogUpdate, ScenePublic, SceneUpdate
+from app.services.vtt_service import activate_scene, create_scene, delete_scene, list_scenes, set_fog, update_scene
 
 router = APIRouter(prefix="/tabletops/{tabletop_id}/vtt", tags=["vtt"])
 
@@ -52,6 +52,17 @@ async def update(
     require_dm(tabletop, user)
     scene = await get_scene_or_404(tabletop_id, scene_id)
     scene = await update_scene(scene, data)
+    return ScenePublic.from_scene(scene)
+
+
+@router.patch("/scenes/{scene_id}/fog", response_model=ScenePublic)
+async def update_fog(
+    tabletop_id: str, scene_id: str, data: SceneFogUpdate, user: User = Depends(get_current_user)
+) -> ScenePublic:
+    tabletop = await get_tabletop_or_404(tabletop_id)
+    require_dm(tabletop, user)
+    scene = await get_scene_or_404(tabletop_id, scene_id)
+    scene = await set_fog(scene, data.fog)
     return ScenePublic.from_scene(scene)
 
 

@@ -105,6 +105,57 @@ async def test_dm_can_toggle_token_display_settings(client, auth_headers):
 
 
 @pytest.mark.asyncio
+async def test_dm_can_paint_and_clear_fog(client, auth_headers):
+    dm_token, _ = await _register(client, "gdm5")
+    tabletop_id = await _create_tabletop(client, dm_token)
+    scene = (await _create_scene(client, dm_token, tabletop_id)).json()
+    assert scene["fog"] == []
+
+    resp = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/scenes/{scene['id']}/fog",
+        json={
+            "fog": [
+                {"id": "s1", "points": [{"x": 1, "y": 2}, {"x": 3, "y": 4}], "radius": 40, "is_erasing": False},
+                {"id": "s2", "points": [{"x": 5, "y": 6}], "radius": 60, "is_erasing": True},
+            ]
+        },
+        headers=auth_headers(dm_token),
+    )
+    assert resp.status_code == 200
+    fog = resp.json()["fog"]
+    assert len(fog) == 2
+    assert fog[0]["id"] == "s1"
+    assert fog[1]["is_erasing"] is True
+
+    cleared = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/scenes/{scene['id']}/fog",
+        json={"fog": []},
+        headers=auth_headers(dm_token),
+    )
+    assert cleared.json()["fog"] == []
+
+
+@pytest.mark.asyncio
+async def test_player_cannot_paint_fog(client, auth_headers):
+    dm_token, _ = await _register(client, "gdm6")
+    player_token, _ = await _register(client, "gplayer6")
+    tabletop_id = await _create_tabletop(client, dm_token)
+    await client.post(
+        f"/tabletops/{tabletop_id}/members",
+        json={"username_or_email": "gplayer6", "role": "player"},
+        headers=auth_headers(dm_token),
+    )
+    scene = (await _create_scene(client, dm_token, tabletop_id)).json()
+
+    resp = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/scenes/{scene['id']}/fog",
+        json={"fog": [{"id": "s1", "points": [{"x": 1, "y": 1}], "radius": 10, "is_erasing": False}]},
+        headers=auth_headers(player_token),
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_player_cannot_configure_grid(client, auth_headers):
     dm_token, _ = await _register(client, "gdm3")
     player_token, _ = await _register(client, "gplayer3")

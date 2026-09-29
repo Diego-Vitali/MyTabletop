@@ -141,6 +141,13 @@ export const DEFAULT_TOKEN_SETTINGS: TokenDisplaySettings = {
   show_instance_badges: true,
 };
 
+export interface FogStroke {
+  id: string;
+  points: Point[];
+  radius: number;
+  is_erasing: boolean;
+}
+
 export interface ScenePublic {
   id: string;
   tabletop_id: string;
@@ -150,6 +157,7 @@ export interface ScenePublic {
   is_active: boolean;
   grid: GridConfig;
   token_settings: TokenDisplaySettings;
+  fog: FogStroke[];
   created_by: string;
   created_at: string;
 }

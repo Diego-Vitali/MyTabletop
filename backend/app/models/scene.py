@@ -27,6 +27,23 @@ class TokenDisplaySettings(BaseModel):
     show_instance_badges: bool = True
 
 
+class FogPoint(BaseModel):
+    x: float
+    y: float
+
+
+class FogStroke(BaseModel):
+    """One brush stroke painted by the DM onto the fog-of-war layer. The
+    frontend sends the whole `Scene.fog` list back on every stroke (see
+    vtt_service.set_fog) rather than incremental diffs — simple and cheap at
+    the stroke counts a single session produces."""
+
+    id: str
+    points: list[FogPoint]
+    radius: float = 50.0
+    is_erasing: bool = False  # False = hides the area (paint fog), True = reveals it
+
+
 class Scene(Document):
     tabletop_id: str
     folder_id: str | None = None
@@ -35,6 +52,7 @@ class Scene(Document):
     is_active: bool = False
     grid: GridConfig = Field(default_factory=GridConfig)
     token_settings: TokenDisplaySettings = Field(default_factory=TokenDisplaySettings)
+    fog: list[FogStroke] = Field(default_factory=list)
     created_by: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

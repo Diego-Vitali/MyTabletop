@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
 import {
   Circle as CircleIcon,
+  CloudFog,
   DoorClosed,
   DoorOpen,
   Eraser,
@@ -27,6 +28,7 @@ import { api, ApiError, API_URL, WS_URL } from "@/lib/api";
 import type {
   DrawingKind,
   DrawingPublic,
+  FogStroke,
   FolderPublic,
   GridConfig,
   MapHistoryEntryPublic,
@@ -43,6 +45,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { Badge, Button, Input, Select, ToolbarIconButton } from "@/components/ui";
 import { DirectoryPanel } from "@/components/vtt/DirectoryPanel";
 import { DrawingLayer, type PendingDrawing } from "@/components/vtt/DrawingLayer";
+import { FogLayer } from "@/components/vtt/FogLayer";
 import { GridLayer, snapToGrid } from "@/components/vtt/GridLayer";
 
 const NOTE_ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number }>> = {
@@ -70,7 +73,8 @@ const SIZE_CATEGORY_MULTIPLIER: Record<SizeCategory, number> = {
 };
 
 type Transform = { x: number; y: number; scale: number };
-type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid" | "draw";
+type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid" | "draw" | "fog";
+type FogTool = "reveal" | "hide" | null;
 type RulerLine = { startX: number; startY: number; endX: number; endY: number };
 type DrawTool = DrawingKind | "erase" | null;
 
@@ -127,6 +131,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [drawWidth, setDrawWidth] = useState(3);
   const [pendingDrawing, setPendingDrawing] = useState<PendingDrawing | null>(null);
   const drawingPtsRef = useRef<Point[] | null>(null);
+
+  const [fogTool, setFogTool] = useState<FogTool>(null);
+  const [fogRadius, setFogRadius] = useState(50);
+  const [pendingFog, setPendingFog] = useState<{ points: Point[]; radius: number; isErasing: boolean } | null>(
+    null,
+  );
+  const fogPtsRef = useRef<Point[] | null>(null);
+  const fogStrokeCounterRef = useRef(0);
 
   const [sceneUploadError, setSceneUploadError] = useState<string | null>(null);
   const [sceneUploading, setSceneUploading] = useState(false);
@@ -211,6 +223,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setScenes((prev) => prev.map((s) => (s.id === msg.scene.id ? msg.scene : s)));
         } else if (msg.type === "scene_deleted") {
           setScenes((prev) => prev.filter((s) => s.id !== msg.scene_id));
+        } else if (msg.type === "fog_updated") {
+          setScenes((prev) => prev.map((s) => (s.id === msg.scene_id ? { ...s, fog: msg.fog } : s)));
         } else if (msg.type === "template_created") {
           setTemplates((prev) =>
             prev.some((t) => t.id === msg.template.id) ? prev : [...prev, msg.template],
@@ -267,6 +281,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const activeScene = scenes.find((s) => s.is_active) ?? null;
   const grid = activeScene?.grid ?? DEFAULT_GRID;
   const tokenSettings = activeScene?.token_settings ?? DEFAULT_TOKEN_SETTINGS;
+  const fog = activeScene?.fog ?? [];
   const selectedToken =
     selectedTokenIds.size === 1 ? tokens.find((t) => selectedTokenIds.has(t.id)) ?? null : null;
   const instanceLabel = (t: TokenPublic): string | null => {
@@ -417,7 +432,54 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
+  const commitFogStroke = async (points: Point[], isErasing: boolean) => {
+    if (!activeScene || points.length < 1) return;
+    fogStrokeCounterRef.current += 1;
+    const stroke: FogStroke = {
+      id: `fog_${user?.id ?? "anon"}_${fogStrokeCounterRef.current}`,
+      points,
+      radius: fogRadius,
+      is_erasing: isErasing,
+    };
+    const nextFog = [...activeScene.fog, stroke];
+    setScenes((prev) => prev.map((s) => (s.id === activeScene.id ? { ...s, fog: nextFog } : s)));
+    try {
+      const updated = await api.patch<ScenePublic>(
+        `/tabletops/${tabletopId}/vtt/scenes/${activeScene.id}/fog`,
+        { fog: nextFog },
+        token,
+      );
+      setScenes((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    } catch {
+      // ignore — WS/reload will reconcile
+    }
+  };
+
+  const clearFog = async () => {
+    if (!activeScene || !window.confirm("Limpar toda a névoa desta cena?")) return;
+    setScenes((prev) => prev.map((s) => (s.id === activeScene.id ? { ...s, fog: [] } : s)));
+    try {
+      const updated = await api.patch<ScenePublic>(
+        `/tabletops/${tabletopId}/vtt/scenes/${activeScene.id}/fog`,
+        { fog: [] },
+        token,
+      );
+      setScenes((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    } catch {
+      // ignore
+    }
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    if (fogTool && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      fogPtsRef.current = [{ x, y }];
+      setPendingFog({ points: [{ x, y }], radius: fogRadius, isErasing: fogTool === "reveal" });
+      return;
+    }
     if (drawTool && drawTool !== "erase" && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
@@ -463,6 +525,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (fogPtsRef.current && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      fogPtsRef.current.push({ x, y });
+      setPendingFog({ points: [...fogPtsRef.current], radius: fogRadius, isErasing: fogTool === "reveal" });
+      return;
+    }
     if (drawingPtsRef.current && containerRef.current && drawTool && drawTool !== "erase" && drawTool !== "text") {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
@@ -492,6 +562,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerUp = () => {
+    if (fogPtsRef.current) {
+      const pts = fogPtsRef.current;
+      const isErasing = fogTool === "reveal";
+      fogPtsRef.current = null;
+      setPendingFog(null);
+      commitFogStroke(pts, isErasing);
+      return;
+    }
     if (drawingPtsRef.current) {
       const pts = drawingPtsRef.current;
       const kind = drawTool as DrawingKind;
@@ -1141,6 +1219,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               </div>
             );
           })}
+          {bgSize && (fog.length > 0 || fogTool) && (
+            <FogLayer
+              fog={fog}
+              pending={pendingFog}
+              width={bgSize.width}
+              height={bgSize.height}
+              interactive={!!fogTool}
+              dmView={iAmDm}
+            />
+          )}
         </div>
         {!backgroundUrl && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-text-muted">
@@ -1209,6 +1297,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             onClick={() => togglePanel("draw")}
           >
             <PenLine size={18} />
+          </ToolbarIconButton>
+        )}
+        {iAmDm && (
+          <ToolbarIconButton
+            title="Névoa de guerra"
+            active={openPanel === "fog"}
+            disabled={!activeScene}
+            onClick={() => togglePanel("fog")}
+          >
+            <CloudFog size={18} />
           </ToolbarIconButton>
         )}
         <ToolbarIconButton
@@ -1396,7 +1494,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 key={label}
                 type="button"
                 title={label}
-                onClick={() => setDrawTool((prev) => (prev === toolValue ? null : toolValue))}
+                onClick={() => {
+                  setFogTool(null);
+                  setDrawTool((prev) => (prev === toolValue ? null : toolValue));
+                }}
                 className={`flex h-8 w-8 items-center justify-center rounded-sm border transition ${
                   drawTool === toolValue
                     ? "border-accent bg-accent-soft text-accent-strong"
@@ -1432,6 +1533,60 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 ? "Clique num desenho no mapa para apagá-lo."
                 : "Desenhe no mapa. Clique na ferramenta de novo para desativar."}
             </p>
+          )}
+        </div>
+      )}
+
+      {openPanel === "fog" && activeScene && (
+        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            Névoa de guerra
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setDrawTool(null);
+                setFogTool((prev) => (prev === "hide" ? null : "hide"));
+              }}
+              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+                fogTool === "hide"
+                  ? "border-accent bg-accent-soft text-accent-strong"
+                  : "border-border-soft text-text-muted hover:text-text"
+              }`}
+            >
+              Esconder
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDrawTool(null);
+                setFogTool((prev) => (prev === "reveal" ? null : "reveal"));
+              }}
+              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+                fogTool === "reveal"
+                  ? "border-accent bg-accent-soft text-accent-strong"
+                  : "border-border-soft text-text-muted hover:text-text"
+              }`}
+            >
+              Revelar
+            </button>
+          </div>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Raio do pincel
+            <input
+              type="range"
+              min={10}
+              max={200}
+              value={fogRadius}
+              onChange={(e) => setFogRadius(Number(e.target.value))}
+            />
+          </label>
+          <Button type="button" variant="secondary" className="text-xs" onClick={clearFog}>
+            Limpar toda a névoa
+          </Button>
+          {fogTool && (
+            <p className="text-[10px] text-text-faint">Arraste no mapa para pintar.</p>
           )}
         </div>
       )}

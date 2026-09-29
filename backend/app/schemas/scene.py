@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from app.models.scene import GridConfig, TokenDisplaySettings
+from app.models.scene import FogStroke, GridConfig, TokenDisplaySettings
 
 if TYPE_CHECKING:
     from app.models.scene import Scene
@@ -18,6 +18,10 @@ class SceneUpdate(BaseModel):
     token_settings: TokenDisplaySettings | None = None
 
 
+class SceneFogUpdate(BaseModel):
+    fog: list[FogStroke]
+
+
 class ScenePublic(BaseModel):
     id: str
     tabletop_id: str
@@ -27,6 +31,7 @@ class ScenePublic(BaseModel):
     is_active: bool
     grid: GridConfig
     token_settings: TokenDisplaySettings
+    fog: list[FogStroke]
     created_by: str
     created_at: datetime
 
@@ -41,6 +46,7 @@ class ScenePublic(BaseModel):
             is_active=scene.is_active,
             grid=scene.grid,
             token_settings=scene.token_settings,
+            fog=scene.fog,
             created_by=scene.created_by,
             created_at=scene.created_at,
         )
