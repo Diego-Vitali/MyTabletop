@@ -8,6 +8,7 @@ from app.models.tabletop import Tabletop
 from app.models.token import Token
 from app.models.user import User
 from app.schemas.scene import ScenePublic, SceneUpdate
+from app.services.vision_service import reset_scene_cache
 
 
 async def _archive_and_clear(tabletop: Tabletop, outgoing: Scene, user: User) -> None:
@@ -76,6 +77,7 @@ async def activate_scene(tabletop: Tabletop, scene: Scene, user: User) -> Scene:
         await _archive_and_clear(tabletop, current_active, user)
         current_active.is_active = False
         await current_active.save()
+        reset_scene_cache(str(current_active.id))
 
     scene.is_active = True
     await scene.save()
@@ -96,6 +98,8 @@ async def update_scene(scene: Scene, data: SceneUpdate) -> Scene:
         scene.grid = data.grid
     if data.token_settings is not None:
         scene.token_settings = data.token_settings
+    if data.dynamic_lighting_enabled is not None:
+        scene.dynamic_lighting_enabled = data.dynamic_lighting_enabled
     await scene.save()
 
     await manager.broadcast(
@@ -124,6 +128,7 @@ async def delete_scene(tabletop: Tabletop, scene: Scene) -> None:
     was_active = scene.is_active
 
     await scene.delete()
+    reset_scene_cache(scene_id)
 
     if was_active:
         current_tokens = await Token.find(Token.tabletop_id == tabletop_id).to_list()

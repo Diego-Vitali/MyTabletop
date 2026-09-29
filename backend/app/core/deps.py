@@ -7,6 +7,7 @@ from app.core.security import decode_access_token
 from app.models.drawing import Drawing
 from app.models.folder import Folder
 from app.models.map_note import MapNote
+from app.models.wall import Wall
 from app.models.scene import Scene
 from app.models.sheet import Sheet
 from app.models.tabletop import Tabletop
@@ -140,3 +141,10 @@ async def get_drawing_or_404(tabletop_id: str, drawing_id: str) -> Drawing:
     if not drawing or drawing.tabletop_id != tabletop_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Desenho não encontrado")
     return drawing
+
+
+async def get_wall_or_404(tabletop_id: str, wall_id: str) -> Wall:
+    wall = await Wall.get(PydanticObjectId(wall_id))
+    if not wall or wall.tabletop_id != tabletop_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Parede não encontrada")
+    return wall

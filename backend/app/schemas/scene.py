@@ -16,6 +16,7 @@ class SceneUpdate(BaseModel):
     folder_id: str | None = None
     grid: GridConfig | None = None
     token_settings: TokenDisplaySettings | None = None
+    dynamic_lighting_enabled: bool | None = None
 
 
 class SceneFogUpdate(BaseModel):
@@ -32,6 +33,7 @@ class ScenePublic(BaseModel):
     grid: GridConfig
     token_settings: TokenDisplaySettings
     fog: list[FogStroke]
+    dynamic_lighting_enabled: bool
     created_by: str
     created_at: datetime
 
@@ -47,6 +49,7 @@ class ScenePublic(BaseModel):
             grid=scene.grid,
             token_settings=scene.token_settings,
             fog=scene.fog,
+            dynamic_lighting_enabled=scene.dynamic_lighting_enabled,
             created_by=scene.created_by,
             created_at=scene.created_at,
         )

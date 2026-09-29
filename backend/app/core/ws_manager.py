@@ -48,9 +48,9 @@ class ConnectionManager:
                 continue
             await self._send(tabletop_id, ws, message)
 
-    async def send_to_dm(self, tabletop_id: str, message: dict) -> None:
+    async def send_to_dm(self, tabletop_id: str, message: dict, exclude: WebSocket | None = None) -> None:
         for ws, info in list(self._rooms.get(tabletop_id, {}).items()):
-            if info.is_dm:
+            if info.is_dm and ws is not exclude:
                 await self._send(tabletop_id, ws, message)
 
     async def send_to_players(

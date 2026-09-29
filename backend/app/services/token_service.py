@@ -1,12 +1,12 @@
 from fastapi import UploadFile
 
 from app.core.storage import save_image
-from app.core.ws_manager import manager
 from app.models.tabletop import Tabletop
 from app.models.token import Token
 from app.models.token_template import TokenTemplate
 from app.models.user import User
 from app.schemas.token import TokenPublic, TokenUpdate
+from app.services.vision_service import gated_token_broadcast
 
 
 async def create_token(tabletop: Tabletop, creator: User, x: float, y: float, image: UploadFile) -> Token:
@@ -20,9 +20,8 @@ async def create_token(tabletop: Tabletop, creator: User, x: float, y: float, im
     )
     await token.insert()
 
-    await manager.broadcast(
-        str(tabletop.id),
-        {"type": "token_added", "token": TokenPublic.from_token(token).model_dump(mode="json")},
+    await gated_token_broadcast(
+        tabletop, {"type": "token_added", "token": TokenPublic.from_token(token).model_dump(mode="json")}
     )
     return token
 
@@ -40,9 +39,8 @@ async def create_token_from_template(
     )
     await token.insert()
 
-    await manager.broadcast(
-        str(tabletop.id),
-        {"type": "token_added", "token": TokenPublic.from_token(token).model_dump(mode="json")},
+    await gated_token_broadcast(
+        tabletop, {"type": "token_added", "token": TokenPublic.from_token(token).model_dump(mode="json")}
     )
     return token
 
@@ -51,7 +49,7 @@ async def list_tokens(tabletop_id: str) -> list[Token]:
     return await Token.find(Token.tabletop_id == tabletop_id).to_list()
 
 
-async def update_token(token: Token, data: TokenUpdate) -> Token:
+async def update_token(tabletop: Tabletop, token: Token, data: TokenUpdate) -> Token:
     if data.x is not None:
         token.x = data.x
     if data.y is not None:
@@ -77,14 +75,13 @@ async def update_token(token: Token, data: TokenUpdate) -> Token:
         token.light_radius = data.light_radius
     await token.save()
 
-    await manager.broadcast(
-        token.tabletop_id,
-        {"type": "token_updated", "token": TokenPublic.from_token(token).model_dump(mode="json")},
+    await gated_token_broadcast(
+        tabletop, {"type": "token_updated", "token": TokenPublic.from_token(token).model_dump(mode="json")}
     )
     return token
 
 
-async def duplicate_token(token: Token, creator: User, offset: float = 24.0) -> Token:
+async def duplicate_token(tabletop: Tabletop, token: Token, creator: User, offset: float = 24.0) -> Token:
     """Clones a live token with a small positional offset — used by the
     canvas's Ctrl+D / "Duplicate" action."""
     clone = Token(
@@ -106,16 +103,14 @@ async def duplicate_token(token: Token, creator: User, offset: float = 24.0) -> 
     )
     await clone.insert()
 
-    await manager.broadcast(
-        clone.tabletop_id,
-        {"type": "token_added", "token": TokenPublic.from_token(clone).model_dump(mode="json")},
+    await gated_token_broadcast(
+        tabletop, {"type": "token_added", "token": TokenPublic.from_token(clone).model_dump(mode="json")}
     )
     return clone
 
 
-async def delete_token(token: Token) -> None:
-    tabletop_id = token.tabletop_id
+async def delete_token(tabletop: Tabletop, token: Token) -> None:
     token_id = str(token.id)
     await token.delete()
 
-    await manager.broadcast(tabletop_id, {"type": "token_deleted", "token_id": token_id})
+    await gated_token_broadcast(tabletop, {"type": "token_deleted", "token_id": token_id})

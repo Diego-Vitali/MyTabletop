@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
 import {
+  BrickWall,
   Circle as CircleIcon,
   CloudFog,
   DoorClosed,
@@ -44,6 +45,7 @@ import type {
   TabletopPublic,
   TokenPublic,
   TokenTemplatePublic,
+  WallPublic,
 } from "@/lib/types";
 import { DEFAULT_GRID, DEFAULT_TOKEN_SETTINGS, NOTE_ICON_CHOICES, SIZE_CATEGORY_LABELS } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
@@ -53,6 +55,7 @@ import { DrawingLayer, type PendingDrawing } from "@/components/vtt/DrawingLayer
 import { FogLayer } from "@/components/vtt/FogLayer";
 import { GridLayer, snapToGrid } from "@/components/vtt/GridLayer";
 import { InitiativeTracker } from "@/components/vtt/InitiativeTracker";
+import { VisionLayer } from "@/components/vtt/VisionLayer";
 
 const NOTE_ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number }>> = {
   StickyNote,
@@ -79,10 +82,21 @@ const SIZE_CATEGORY_MULTIPLIER: Record<SizeCategory, number> = {
 };
 
 type Transform = { x: number; y: number; scale: number };
-type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid" | "draw" | "fog" | "initiative";
+type PanelId =
+  | "members"
+  | "history"
+  | "scenes"
+  | "tokens"
+  | "notes"
+  | "grid"
+  | "draw"
+  | "fog"
+  | "initiative"
+  | "walls";
 type FogTool = "reveal" | "hide" | null;
 type RulerLine = { startX: number; startY: number; endX: number; endY: number };
 type DrawTool = DrawingKind | "erase" | null;
+type WallTool = "draw" | "erase" | null;
 type UndoAction =
   | { kind: "moveToken"; tokenId: string; from: { x: number; y: number } }
   | { kind: "createToken"; tokenId: string }
@@ -155,6 +169,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const fogStrokeCounterRef = useRef(0);
   const undoStackRef = useRef<UndoAction[]>([]);
 
+  const [walls, setWalls] = useState<WallPublic[]>([]);
+  const [wallTool, setWallTool] = useState<WallTool>(null);
+  const [pendingWall, setPendingWall] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(
+    null,
+  );
+  const wallStartRef = useRef<Point | null>(null);
+
   const [sceneUploadError, setSceneUploadError] = useState<string | null>(null);
   const [sceneUploading, setSceneUploading] = useState(false);
   const [templateUploadError, setTemplateUploadError] = useState<string | null>(null);
@@ -181,8 +202,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       api.get<DrawingPublic[]>(`/tabletops/${tabletopId}/vtt/drawings`, token),
       api.get<InitiativePublic>(`/tabletops/${tabletopId}/vtt/initiative`, token),
       api.get<EncounterPublic[]>(`/tabletops/${tabletopId}/vtt/encounters`, token),
+      api.get<WallPublic[]>(`/tabletops/${tabletopId}/vtt/walls`, token),
     ]).then(
-      ([tt, tk, sc, tpl, sf, tf, nt, dr, ini, enc]) => {
+      ([tt, tk, sc, tpl, sf, tf, nt, dr, ini, enc, wl]) => {
         if (!ignore) {
           setTabletop(tt);
           setBackgroundUrl(tt.background_image_url);
@@ -195,6 +217,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setDrawings(dr);
           setInitiative(ini);
           setEncounters(enc);
+          setWalls(wl);
           setLoading(false);
         }
       },
@@ -226,11 +249,21 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setTokens([]);
           setNotes([]);
           setDrawings([]);
+          setWalls([]);
           setHistory(null);
           api.get<MapNotePublic[]>(`/tabletops/${tabletopId}/vtt/notes`, token).then(setNotes, () => {});
           api.get<DrawingPublic[]>(`/tabletops/${tabletopId}/vtt/drawings`, token).then(setDrawings, () => {});
+          api.get<WallPublic[]>(`/tabletops/${tabletopId}/vtt/walls`, token).then(setWalls, () => {});
         } else if (msg.type === "token_added") {
           setTokens((prev) => (prev.some((t) => t.id === msg.token.id) ? prev : [...prev, msg.token]));
+        } else if (msg.type === "token_entered_view") {
+          setTokens((prev) =>
+            prev.some((t) => t.id === msg.token.id)
+              ? prev.map((t) => (t.id === msg.token.id ? msg.token : t))
+              : [...prev, msg.token],
+          );
+        } else if (msg.type === "token_left_view") {
+          setTokens((prev) => prev.filter((t) => t.id !== msg.token_id));
         } else if (msg.type === "token_moved") {
           setTokens((prev) =>
             prev.map((t) => (t.id === msg.token_id ? { ...t, x: msg.x, y: msg.y } : t)),
@@ -284,6 +317,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setDrawings((prev) => (prev.some((d) => d.id === msg.drawing.id) ? prev : [...prev, msg.drawing]));
         } else if (msg.type === "drawing_deleted") {
           setDrawings((prev) => prev.filter((d) => d.id !== msg.drawing_id));
+        } else if (msg.type === "wall_added") {
+          setWalls((prev) => (prev.some((w) => w.id === msg.wall.id) ? prev : [...prev, msg.wall]));
+        } else if (msg.type === "wall_deleted") {
+          setWalls((prev) => prev.filter((w) => w.id !== msg.wall_id));
         } else if (msg.type === "initiative_updated") {
           setInitiative(msg.initiative);
         } else if (msg.type === "encounter_created") {
@@ -312,6 +349,11 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const grid = activeScene?.grid ?? DEFAULT_GRID;
   const tokenSettings = activeScene?.token_settings ?? DEFAULT_TOKEN_SETTINGS;
   const fog = activeScene?.fog ?? [];
+  const dynamicLightingOn = activeScene?.dynamic_lighting_enabled ?? false;
+  const playerIds = new Set((tabletop?.members ?? []).filter((m) => m.role !== "dm").map((m) => m.user_id));
+  const lights = tokens
+    .filter((t) => t.emits_light && playerIds.has(t.created_by))
+    .map((t) => ({ x: t.x, y: t.y, radius: t.light_radius ?? 0 }));
   const selectedToken =
     selectedTokenIds.size === 1 ? tokens.find((t) => selectedTokenIds.has(t.id)) ?? null : null;
   const instanceLabel = (t: TokenPublic): string | null => {
@@ -525,6 +567,42 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
+  const toggleDynamicLighting = async (enabled: boolean) => {
+    if (!activeScene) return;
+    try {
+      const updated = await api.patch<ScenePublic>(
+        `/tabletops/${tabletopId}/vtt/scenes/${activeScene.id}`,
+        { dynamic_lighting_enabled: enabled },
+        token,
+      );
+      setScenes((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    } catch {
+      // ignore
+    }
+  };
+
+  const createWall = async (x1: number, y1: number, x2: number, y2: number) => {
+    try {
+      const created = await api.post<WallPublic>(
+        `/tabletops/${tabletopId}/vtt/walls`,
+        { x1, y1, x2, y2 },
+        token,
+      );
+      setWalls((prev) => (prev.some((w) => w.id === created.id) ? prev : [...prev, created]));
+    } catch {
+      // ignore
+    }
+  };
+
+  const deleteWall = async (w: WallPublic) => {
+    setWalls((prev) => prev.filter((wl) => wl.id !== w.id));
+    try {
+      await api.del(`/tabletops/${tabletopId}/vtt/walls/${w.id}`, token);
+    } catch {
+      // ignore
+    }
+  };
+
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const rect = containerRef.current!.getBoundingClientRect();
@@ -661,6 +739,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (wallTool === "draw" && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      wallStartRef.current = { x, y };
+      setPendingWall({ x1: x, y1: y, x2: x, y2: y });
+      return;
+    }
     if (fogTool && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
@@ -715,6 +802,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (wallStartRef.current && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      setPendingWall({ x1: wallStartRef.current.x, y1: wallStartRef.current.y, x2: x, y2: y });
+      return;
+    }
     if (fogPtsRef.current && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
@@ -752,6 +846,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerUp = () => {
+    if (wallStartRef.current) {
+      const start = wallStartRef.current;
+      wallStartRef.current = null;
+      const end = pendingWall ? { x: pendingWall.x2, y: pendingWall.y2 } : start;
+      setPendingWall(null);
+      if (Math.hypot(end.x - start.x, end.y - start.y) > 2) {
+        createWall(start.x, start.y, end.x, end.y);
+      }
+      return;
+    }
     if (fogPtsRef.current) {
       const pts = fogPtsRef.current;
       const isErasing = fogTool === "reveal";
@@ -1314,6 +1418,40 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             eraseMode={drawTool === "erase"}
             onErase={deleteDrawing}
           />
+          {iAmDm && (walls.length > 0 || pendingWall) && (
+            <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1}>
+              {walls.map((w) => (
+                <line
+                  key={w.id}
+                  x1={w.x1}
+                  y1={w.y1}
+                  x2={w.x2}
+                  y2={w.y2}
+                  stroke="#f2c14e"
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  style={{ pointerEvents: wallTool === "erase" ? "stroke" : "none", cursor: "pointer" }}
+                  onPointerDown={(e) => {
+                    if (wallTool !== "erase") return;
+                    e.stopPropagation();
+                    deleteWall(w);
+                  }}
+                />
+              ))}
+              {pendingWall && (
+                <line
+                  x1={pendingWall.x1}
+                  y1={pendingWall.y1}
+                  x2={pendingWall.x2}
+                  y2={pendingWall.y2}
+                  stroke="#f2c14e"
+                  strokeWidth={3}
+                  strokeDasharray="6 4"
+                  opacity={0.7}
+                />
+              )}
+            </svg>
+          )}
           {ruler && (
             <svg
               className="pointer-events-none absolute"
@@ -1470,6 +1608,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               dmView={iAmDm}
             />
           )}
+          {bgSize && dynamicLightingOn && (
+            <VisionLayer lights={lights} walls={walls} width={bgSize.width} height={bgSize.height} />
+          )}
         </div>
         {!backgroundUrl && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-text-muted">
@@ -1548,6 +1689,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             onClick={() => togglePanel("fog")}
           >
             <CloudFog size={18} />
+          </ToolbarIconButton>
+        )}
+        {iAmDm && (
+          <ToolbarIconButton
+            title="Paredes e iluminação dinâmica"
+            active={openPanel === "walls"}
+            disabled={!activeScene}
+            onClick={() => togglePanel("walls")}
+          >
+            <BrickWall size={18} />
           </ToolbarIconButton>
         )}
         <ToolbarIconButton
@@ -1744,6 +1895,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 title={label}
                 onClick={() => {
                   setFogTool(null);
+                  setWallTool(null);
                   setDrawTool((prev) => (prev === toolValue ? null : toolValue));
                 }}
                 className={`flex h-8 w-8 items-center justify-center rounded-sm border transition ${
@@ -1795,6 +1947,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               type="button"
               onClick={() => {
                 setDrawTool(null);
+                setWallTool(null);
                 setFogTool((prev) => (prev === "hide" ? null : "hide"));
               }}
               className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
@@ -1809,6 +1962,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               type="button"
               onClick={() => {
                 setDrawTool(null);
+                setWallTool(null);
                 setFogTool((prev) => (prev === "reveal" ? null : "reveal"));
               }}
               className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
@@ -1835,6 +1989,65 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           </Button>
           {fogTool && (
             <p className="text-[10px] text-text-faint">Arraste no mapa para pintar.</p>
+          )}
+        </div>
+      )}
+
+      {openPanel === "walls" && activeScene && (
+        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            Iluminação dinâmica
+          </span>
+          <label className="flex items-center justify-between text-sm">
+            Ativada nesta cena
+            <input
+              type="checkbox"
+              checked={activeScene.dynamic_lighting_enabled}
+              onChange={(e) => toggleDynamicLighting(e.target.checked)}
+            />
+          </label>
+          <p className="text-[10px] text-text-faint">
+            Quando ativa, jogadores só recebem tokens dentro da luz de um token de jogador que emite luz
+            (aba &ldquo;Token&rdquo; ao selecionar um token) e com linha de visão livre de paredes.
+          </p>
+          <div className="flex gap-2 border-t border-border-soft pt-3">
+            <button
+              type="button"
+              onClick={() => {
+                setDrawTool(null);
+                setFogTool(null);
+                setWallTool((prev) => (prev === "draw" ? null : "draw"));
+              }}
+              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+                wallTool === "draw"
+                  ? "border-accent bg-accent-soft text-accent-strong"
+                  : "border-border-soft text-text-muted hover:text-text"
+              }`}
+            >
+              Desenhar parede
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDrawTool(null);
+                setFogTool(null);
+                setWallTool((prev) => (prev === "erase" ? null : "erase"));
+              }}
+              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+                wallTool === "erase"
+                  ? "border-accent bg-accent-soft text-accent-strong"
+                  : "border-border-soft text-text-muted hover:text-text"
+              }`}
+            >
+              Apagar
+            </button>
+          </div>
+          {wallTool && (
+            <p className="text-[10px] text-text-faint">
+              {wallTool === "draw"
+                ? "Arraste no mapa para desenhar uma parede."
+                : "Clique numa parede no mapa para apagá-la."}
+            </p>
           )}
         </div>
       )}

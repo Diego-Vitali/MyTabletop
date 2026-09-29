@@ -20,6 +20,7 @@ from app.models.tabletop import Tabletop
 from app.models.token import Token
 from app.models.token_template import TokenTemplate
 from app.models.user import User
+from app.models.wall import Wall
 from app.routers import (
     auth,
     drawings,
@@ -33,6 +34,7 @@ from app.routers import (
     tokens,
     users,
     vtt,
+    walls,
     ws,
 )
 
@@ -55,6 +57,7 @@ async def lifespan(app: FastAPI):
             Drawing,
             Initiative,
             Encounter,
+            Wall,
         ],
     )
     yield
@@ -85,6 +88,7 @@ app.include_router(map_notes.router)
 app.include_router(drawings.router)
 app.include_router(initiative.router)
 app.include_router(encounters.router)
+app.include_router(walls.router)
 app.include_router(ws.router)
 
 

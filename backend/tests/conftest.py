@@ -17,6 +17,7 @@ from app.models.tabletop import Tabletop
 from app.models.token import Token
 from app.models.token_template import TokenTemplate
 from app.models.user import User
+from app.models.wall import Wall
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +46,7 @@ async def client():
             Drawing,
             Initiative,
             Encounter,
+            Wall,
         ],
     )
     transport = ASGITransport(app=app)

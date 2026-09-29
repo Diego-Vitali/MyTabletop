@@ -158,6 +158,20 @@ export interface ScenePublic {
   grid: GridConfig;
   token_settings: TokenDisplaySettings;
   fog: FogStroke[];
+  dynamic_lighting_enabled: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+export interface WallPublic {
+  id: string;
+  tabletop_id: string;
+  scene_id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  blocks_light: boolean;
   created_by: string;
   created_at: string;
 }

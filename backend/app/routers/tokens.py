@@ -69,7 +69,7 @@ async def update(
     require_member(tabletop, user)
     token = await get_token_or_404(tabletop_id, token_id)
     require_token_editor(tabletop, token, user)
-    token = await update_token(token, data)
+    token = await update_token(tabletop, token, data)
     return TokenPublic.from_token(token)
 
 
@@ -81,7 +81,7 @@ async def duplicate(
     require_member(tabletop, user)
     token = await get_token_or_404(tabletop_id, token_id)
     require_token_editor(tabletop, token, user)
-    clone = await duplicate_token(token, user)
+    clone = await duplicate_token(tabletop, token, user)
     return TokenPublic.from_token(clone)
 
 
@@ -93,4 +93,4 @@ async def delete(
     require_member(tabletop, user)
     token = await get_token_or_404(tabletop_id, token_id)
     require_token_editor(tabletop, token, user)
-    await delete_token(token)
+    await delete_token(tabletop, token)

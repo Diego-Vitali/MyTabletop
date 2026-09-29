@@ -53,6 +53,11 @@ class Scene(Document):
     grid: GridConfig = Field(default_factory=GridConfig)
     token_settings: TokenDisplaySettings = Field(default_factory=TokenDisplaySettings)
     fog: list[FogStroke] = Field(default_factory=list)
+    # Off by default so every existing/ordinary scene keeps working exactly
+    # as before — see app/services/vision_service.py for what turning this
+    # on actually changes (players stop receiving live token data outside
+    # their party's light+line-of-sight).
+    dynamic_lighting_enabled: bool = False
     created_by: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
