@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from app.models.scene import GridConfig
+from app.models.scene import GridConfig, TokenDisplaySettings
 
 if TYPE_CHECKING:
     from app.models.scene import Scene
@@ -15,6 +15,7 @@ class SceneUpdate(BaseModel):
     name: str | None = None
     folder_id: str | None = None
     grid: GridConfig | None = None
+    token_settings: TokenDisplaySettings | None = None
 
 
 class ScenePublic(BaseModel):
@@ -25,6 +26,7 @@ class ScenePublic(BaseModel):
     image_url: str
     is_active: bool
     grid: GridConfig
+    token_settings: TokenDisplaySettings
     created_by: str
     created_at: datetime
 
@@ -38,6 +40,7 @@ class ScenePublic(BaseModel):
             image_url=f"/uploads/{scene.image_path}",
             is_active=scene.is_active,
             grid=scene.grid,
+            token_settings=scene.token_settings,
             created_by=scene.created_by,
             created_at=scene.created_at,
         )

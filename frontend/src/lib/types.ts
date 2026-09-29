@@ -49,6 +49,16 @@ export interface SheetPublic {
   updated_at: string;
 }
 
+export type SizeCategory = "pequeno" | "medio" | "grande" | "enorme" | "descomunal";
+
+export const SIZE_CATEGORY_LABELS: Record<SizeCategory, string> = {
+  pequeno: "Pequeno",
+  medio: "Médio",
+  grande: "Grande",
+  enorme: "Enorme",
+  descomunal: "Descomunal",
+};
+
 export interface TokenPublic {
   id: string;
   tabletop_id: string;
@@ -56,7 +66,14 @@ export interface TokenPublic {
   x: number;
   y: number;
   size: number | null;
+  rotation: number;
   flipped_x: boolean;
+  name: string | null;
+  hp_current: number | null;
+  hp_max: number | null;
+  size_category: SizeCategory | null;
+  emits_light: boolean;
+  light_radius: number | null;
   template_id: string | null;
   created_by: string;
   created_at: string;
@@ -112,6 +129,18 @@ export const DEFAULT_GRID: GridConfig = {
   unit_label: "1,5m",
 };
 
+export interface TokenDisplaySettings {
+  show_nameplates: boolean;
+  show_hp_bars: boolean;
+  show_instance_badges: boolean;
+}
+
+export const DEFAULT_TOKEN_SETTINGS: TokenDisplaySettings = {
+  show_nameplates: true,
+  show_hp_bars: true,
+  show_instance_badges: true,
+};
+
 export interface ScenePublic {
   id: string;
   tabletop_id: string;
@@ -120,6 +149,7 @@ export interface ScenePublic {
   image_url: string;
   is_active: boolean;
   grid: GridConfig;
+  token_settings: TokenDisplaySettings;
   created_by: string;
   created_at: string;
 }

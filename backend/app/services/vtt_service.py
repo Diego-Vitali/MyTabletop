@@ -94,6 +94,8 @@ async def update_scene(scene: Scene, data: SceneUpdate) -> Scene:
         scene.folder_id = data.folder_id
     if data.grid is not None:
         scene.grid = data.grid
+    if data.token_settings is not None:
+        scene.token_settings = data.token_settings
     await scene.save()
 
     await manager.broadcast(

@@ -58,8 +58,23 @@ async def update_token(token: Token, data: TokenUpdate) -> Token:
         token.y = data.y
     if data.size is not None:
         token.size = data.size
+    if data.rotation is not None:
+        token.rotation = data.rotation
     if data.flipped_x is not None:
         token.flipped_x = data.flipped_x
+    if data.emits_light is not None:
+        token.emits_light = data.emits_light
+    fields_set = data.model_fields_set
+    if "name" in fields_set:
+        token.name = data.name
+    if "hp_current" in fields_set:
+        token.hp_current = data.hp_current
+    if "hp_max" in fields_set:
+        token.hp_max = data.hp_max
+    if "size_category" in fields_set:
+        token.size_category = data.size_category
+    if "light_radius" in fields_set:
+        token.light_radius = data.light_radius
     await token.save()
 
     await manager.broadcast(
@@ -67,6 +82,35 @@ async def update_token(token: Token, data: TokenUpdate) -> Token:
         {"type": "token_updated", "token": TokenPublic.from_token(token).model_dump(mode="json")},
     )
     return token
+
+
+async def duplicate_token(token: Token, creator: User, offset: float = 24.0) -> Token:
+    """Clones a live token with a small positional offset — used by the
+    canvas's Ctrl+D / "Duplicate" action."""
+    clone = Token(
+        tabletop_id=token.tabletop_id,
+        image_path=token.image_path,
+        x=token.x + offset,
+        y=token.y + offset,
+        size=token.size,
+        rotation=token.rotation,
+        flipped_x=token.flipped_x,
+        name=token.name,
+        hp_current=token.hp_current,
+        hp_max=token.hp_max,
+        size_category=token.size_category,
+        emits_light=token.emits_light,
+        light_radius=token.light_radius,
+        template_id=token.template_id,
+        created_by=str(creator.id),
+    )
+    await clone.insert()
+
+    await manager.broadcast(
+        clone.tabletop_id,
+        {"type": "token_added", "token": TokenPublic.from_token(clone).model_dump(mode="json")},
+    )
+    return clone
 
 
 async def delete_token(token: Token) -> None:

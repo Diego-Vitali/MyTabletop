@@ -19,6 +19,14 @@ class GridConfig(BaseModel):
     unit_label: str = "1,5m"  # shown next to measured distances, e.g. "3 (1,5m)"
 
 
+class TokenDisplaySettings(BaseModel):
+    """Per-scene toggles for what's drawn on top of a token (see TokenLayer)."""
+
+    show_nameplates: bool = True
+    show_hp_bars: bool = True
+    show_instance_badges: bool = True
+
+
 class Scene(Document):
     tabletop_id: str
     folder_id: str | None = None
@@ -26,6 +34,7 @@ class Scene(Document):
     image_path: str  # e.g. "maps/<uuid>.png", see app/core/storage.py
     is_active: bool = False
     grid: GridConfig = Field(default_factory=GridConfig)
+    token_settings: TokenDisplaySettings = Field(default_factory=TokenDisplaySettings)
     created_by: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

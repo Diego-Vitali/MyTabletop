@@ -19,11 +19,12 @@ import type {
   MapHistoryEntryPublic,
   MapNotePublic,
   ScenePublic,
+  SizeCategory,
   TabletopPublic,
   TokenPublic,
   TokenTemplatePublic,
 } from "@/lib/types";
-import { DEFAULT_GRID } from "@/lib/types";
+import { DEFAULT_GRID, DEFAULT_TOKEN_SETTINGS, SIZE_CATEGORY_LABELS } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Badge, Button, Input, Select, ToolbarIconButton } from "@/components/ui";
 import { DirectoryPanel } from "@/components/vtt/DirectoryPanel";
@@ -36,6 +37,13 @@ const TOKEN_SIZE = 64;
 const MIN_TOKEN_SIZE = 16;
 const MAX_TOKEN_SIZE = 512;
 const NOTE_SIZE = 24;
+const SIZE_CATEGORY_MULTIPLIER: Record<SizeCategory, number> = {
+  pequeno: 0.75,
+  medio: 1,
+  grande: 2,
+  enorme: 3,
+  descomunal: 4,
+};
 
 type Transform = { x: number; y: number; scale: number };
 type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid";
@@ -63,13 +71,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     null,
   );
   const tokenDragRef = useRef<{
-    id: string;
     startX: number;
     startY: number;
-    originX: number;
-    originY: number;
+    origins: Map<string, { x: number; y: number }>;
   } | null>(null);
   const resizeRef = useRef<{ id: string; centerX: number; centerY: number } | null>(null);
+  const rotateRef = useRef<{ id: string; centerX: number; centerY: number } | null>(null);
   const noteDragRef = useRef<{
     id: string;
     startX: number;
@@ -80,7 +87,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const centeredRef = useRef(false);
 
   const [openPanel, setOpenPanel] = useState<PanelId | null>(null);
-  const [selectedTokenId, setSelectedTokenId] = useState<string | null>(null);
+  const [selectedTokenIds, setSelectedTokenIds] = useState<Set<string>>(new Set());
   const [addNoteMode, setAddNoteMode] = useState(false);
   const [openNoteId, setOpenNoteId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
@@ -215,35 +222,66 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   const activeScene = scenes.find((s) => s.is_active) ?? null;
   const grid = activeScene?.grid ?? DEFAULT_GRID;
+  const tokenSettings = activeScene?.token_settings ?? DEFAULT_TOKEN_SETTINGS;
+  const selectedToken =
+    selectedTokenIds.size === 1 ? tokens.find((t) => selectedTokenIds.has(t.id)) ?? null : null;
+  const instanceLabel = (t: TokenPublic): string | null => {
+    if (!tokenSettings.show_instance_badges || !t.template_id) return null;
+    const siblings = tokens.filter((tok) => tok.template_id === t.template_id);
+    if (siblings.length < 2) return null;
+    return String(siblings.findIndex((tok) => tok.id === t.id) + 1);
+  };
   const pxToDistanceLabel = (px: number) => {
     if (!grid.size) return `${Math.round(px)}px`;
     const units = px / grid.size;
     return `${units.toFixed(1)} × ${grid.unit_label}`;
   };
 
-  // Keyboard shortcut: F flips the selected token horizontally.
+  // Keyboard shortcuts for the current token selection: F flip, Delete/Backspace
+  // remove, Escape clear, Ctrl/Cmd+D duplicate.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!selectedTokenId || e.key.toLowerCase() !== "f") return;
       const active = document.activeElement as HTMLElement | null;
       if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)) {
         return;
       }
-      const t = tokens.find((tok) => tok.id === selectedTokenId);
-      if (!t || !canMoveToken(t)) return;
-      api
-        .patch<TokenPublic>(
-          `/tabletops/${tabletopId}/vtt/tokens/${t.id}`,
-          { flipped_x: !t.flipped_x },
-          token,
-        )
-        .then((updated) => setTokens((prev) => prev.map((tok) => (tok.id === updated.id ? updated : tok))))
-        .catch(() => {});
+      if (e.key === "Escape" && selectedTokenIds.size > 0) {
+        setSelectedTokenIds(new Set());
+        return;
+      }
+      if (selectedTokenIds.size === 0) return;
+      const selected = tokens.filter((t) => selectedTokenIds.has(t.id) && canMoveToken(t));
+      if (selected.length === 0) return;
+
+      if (e.key.toLowerCase() === "f") {
+        for (const t of selected) {
+          api
+            .patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, { flipped_x: !t.flipped_x }, token)
+            .then((updated) => setTokens((prev) => prev.map((tok) => (tok.id === updated.id ? updated : tok))))
+            .catch(() => {});
+        }
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        const ids = new Set(selected.map((t) => t.id));
+        setTokens((prev) => prev.filter((t) => !ids.has(t.id)));
+        setSelectedTokenIds(new Set());
+        for (const t of selected) {
+          api.del(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, token).catch(() => {});
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        for (const t of selected) {
+          api
+            .post<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${t.id}/duplicate`, {}, token)
+            .then((created) => setTokens((prev) => (prev.some((tok) => tok.id === created.id) ? prev : [...prev, created])))
+            .catch(() => {});
+        }
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTokenId, tokens, tabletopId, token, iAmDm, user]);
+  }, [selectedTokenIds, tokens, tabletopId, token, iAmDm, user]);
 
   const togglePanel = (panel: PanelId) => {
     setOpenPanel((prev) => (prev === panel ? null : panel));
@@ -332,7 +370,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       return;
     }
     setOpenPanel(null);
-    setSelectedTokenId(null);
+    setSelectedTokenIds(new Set());
     setOpenNoteId(null);
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
@@ -372,8 +410,21 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     if (!canMoveToken(t)) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
-    setSelectedTokenId(t.id);
-    tokenDragRef.current = { id: t.id, startX: e.clientX, startY: e.clientY, originX: t.x, originY: t.y };
+    if (e.shiftKey) {
+      const next = new Set(selectedTokenIds);
+      if (next.has(t.id)) next.delete(t.id);
+      else next.add(t.id);
+      setSelectedTokenIds(next);
+      return;
+    }
+    const ids = selectedTokenIds.has(t.id) && selectedTokenIds.size > 1 ? Array.from(selectedTokenIds) : [t.id];
+    setSelectedTokenIds(new Set(ids));
+    const origins = new Map<string, { x: number; y: number }>();
+    for (const id of ids) {
+      const tok = tokens.find((tk) => tk.id === id);
+      if (tok && canMoveToken(tok)) origins.set(id, { x: tok.x, y: tok.y });
+    }
+    tokenDragRef.current = { startX: e.clientX, startY: e.clientY, origins };
   };
 
   const onTokenPointerMove = (e: React.PointerEvent) => {
@@ -382,13 +433,19 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     e.stopPropagation();
     const dx = (e.clientX - drag.startX) / transform.scale;
     const dy = (e.clientY - drag.startY) / transform.scale;
-    const nextX = drag.originX + dx;
-    const nextY = drag.originY + dy;
     setTokens((prev) =>
-      prev.map((t) => (t.id === drag.id ? { ...t, x: nextX, y: nextY } : t)),
+      prev.map((t) => {
+        const origin = drag.origins.get(t.id);
+        if (!origin) return t;
+        return { ...t, x: origin.x + dx, y: origin.y + dy };
+      }),
     );
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "token_move_live", token_id: drag.id, x: nextX, y: nextY }));
+      for (const [id, origin] of drag.origins) {
+        wsRef.current.send(
+          JSON.stringify({ type: "token_move_live", token_id: id, x: origin.x + dx, y: origin.y + dy }),
+        );
+      }
     }
   };
 
@@ -397,14 +454,23 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     if (!drag) return;
     e.stopPropagation();
     tokenDragRef.current = null;
-    const moved = tokens.find((t) => t.id === drag.id);
-    if (!moved) return;
-    const { x, y } = snapToGrid(moved.x, moved.y, grid);
-    setTokens((prev) => prev.map((t) => (t.id === drag.id ? { ...t, x, y } : t)));
-    try {
-      await api.patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${drag.id}`, { x, y }, token);
-    } catch {
-      // best effort — a future WS message will correct any drift
+    const ids = Array.from(drag.origins.keys());
+    const snapped = ids
+      .map((id) => tokens.find((t) => t.id === id))
+      .filter((t): t is TokenPublic => !!t)
+      .map((t) => ({ id: t.id, ...snapToGrid(t.x, t.y, grid) }));
+    setTokens((prev) =>
+      prev.map((t) => {
+        const s = snapped.find((sp) => sp.id === t.id);
+        return s ? { ...t, x: s.x, y: s.y } : t;
+      }),
+    );
+    for (const s of snapped) {
+      try {
+        await api.patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${s.id}`, { x: s.x, y: s.y }, token);
+      } catch {
+        // best effort — a future WS message will correct any drift
+      }
     }
   };
 
@@ -440,6 +506,38 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         { size: t.size },
         token,
       );
+    } catch {
+      // best effort — a future WS message will correct any drift
+    }
+  };
+
+  const onRotateHandlePointerDown = (e: React.PointerEvent, t: TokenPublic) => {
+    if (!canMoveToken(t)) return;
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    rotateRef.current = { id: t.id, centerX: t.x, centerY: t.y };
+  };
+
+  const onRotateHandlePointerMove = (e: React.PointerEvent) => {
+    const r = rotateRef.current;
+    if (!r || !containerRef.current) return;
+    e.stopPropagation();
+    const rect = containerRef.current.getBoundingClientRect();
+    const px = (e.clientX - rect.left - transform.x) / transform.scale;
+    const py = (e.clientY - rect.top - transform.y) / transform.scale;
+    const angle = (Math.atan2(py - r.centerY, px - r.centerX) * 180) / Math.PI + 90;
+    setTokens((prev) => prev.map((t) => (t.id === r.id ? { ...t, rotation: angle } : t)));
+  };
+
+  const onRotateHandlePointerUp = async (e: React.PointerEvent) => {
+    const r = rotateRef.current;
+    if (!r) return;
+    e.stopPropagation();
+    rotateRef.current = null;
+    const t = tokens.find((tok) => tok.id === r.id);
+    if (!t) return;
+    try {
+      await api.patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${r.id}`, { rotation: t.rotation }, token);
     } catch {
       // best effort — a future WS message will correct any drift
     }
@@ -509,11 +607,30 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   const deleteToken = async (t: TokenPublic) => {
     setTokens((prev) => prev.filter((tok) => tok.id !== t.id));
-    if (selectedTokenId === t.id) setSelectedTokenId(null);
+    setSelectedTokenIds((prev) => {
+      if (!prev.has(t.id)) return prev;
+      const next = new Set(prev);
+      next.delete(t.id);
+      return next;
+    });
     try {
       await api.del(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, token);
     } catch {
       // ignore — WS/reload will reconcile
+    }
+  };
+
+  const updateSelectedToken = async (patch: Partial<TokenPublic>) => {
+    if (!selectedToken) return;
+    try {
+      const updated = await api.patch<TokenPublic>(
+        `/tabletops/${tabletopId}/vtt/tokens/${selectedToken.id}`,
+        patch,
+        token,
+      );
+      setTokens((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+    } catch {
+      // ignore
     }
   };
 
@@ -777,7 +894,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           )}
           {tokens.map((t) => {
             const size = t.size ?? TOKEN_SIZE;
-            const selected = t.id === selectedTokenId;
+            const selected = selectedTokenIds.has(t.id);
+            const soleSelected = selected && selectedTokenIds.size === 1;
+            const badge = instanceLabel(t);
+            const hpPct =
+              tokenSettings.show_hp_bars && t.hp_max
+                ? Math.max(0, Math.min(100, ((t.hp_current ?? t.hp_max) / t.hp_max) * 100))
+                : null;
             return (
               <div
                 key={t.id}
@@ -799,11 +922,31 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   src={`${API_URL}${t.image_url}`}
                   alt="Token"
                   draggable={false}
-                  style={{ transform: t.flipped_x ? "scaleX(-1)" : undefined }}
+                  style={{
+                    transform: `${t.flipped_x ? "scaleX(-1) " : ""}rotate(${t.rotation}deg)`,
+                  }}
                   className={`h-full w-full select-none rounded-full border-2 object-cover shadow-lg ${
-                    selected ? "border-accent" : "border-border-soft"
-                  }`}
+                    t.hp_max && t.hp_current === 0 ? "grayscale" : ""
+                  } ${selected ? "border-accent" : "border-border-soft"}`}
                 />
+                {badge && (
+                  <span className="pointer-events-none absolute -left-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-surface px-1 font-mono text-[9px] font-bold text-text shadow">
+                    {badge}
+                  </span>
+                )}
+                {hpPct !== null && (
+                  <div className="absolute -bottom-1.5 left-0 h-1.5 w-full overflow-hidden rounded-full bg-surface/80">
+                    <div
+                      className={`h-full ${hpPct > 50 ? "bg-accent" : hpPct > 20 ? "bg-rare" : "bg-danger"}`}
+                      style={{ width: `${hpPct}%` }}
+                    />
+                  </div>
+                )}
+                {tokenSettings.show_nameplates && t.name && (
+                  <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-surface/90 px-1.5 py-0.5 font-mono text-[9px] text-text-muted">
+                    {t.name}
+                  </span>
+                )}
                 {canMoveToken(t) && (
                   <button
                     type="button"
@@ -815,6 +958,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     ×
                   </button>
                 )}
+                {soleSelected && canMoveToken(t) && (
+                  <div
+                    onPointerDown={(e) => onRotateHandlePointerDown(e, t)}
+                    onPointerMove={onRotateHandlePointerMove}
+                    onPointerUp={onRotateHandlePointerUp}
+                    className="absolute left-1/2 -top-4 h-3 w-3 -translate-x-1/2 cursor-grab rounded-full border-2 border-bg bg-accent-strong"
+                    style={{ touchAction: "none" }}
+                    title="Arraste para rotacionar"
+                  />
+                )}
                 {selected && canMoveToken(t) && (
                   <div
                     onPointerDown={(e) => onResizeHandlePointerDown(e, t)}
@@ -822,7 +975,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     onPointerUp={onResizeHandlePointerUp}
                     className="absolute -bottom-1 -right-1 h-3.5 w-3.5 cursor-nwse-resize rounded-full border-2 border-bg bg-accent"
                     style={{ touchAction: "none" }}
-                    title="Arraste para redimensionar · F para flipar"
+                    title="Arraste para redimensionar · F para flipar · Ctrl+D duplica · Del remove"
                   />
                 )}
               </div>
@@ -1183,6 +1336,105 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {selectedToken && canMoveToken(selectedToken) && (
+        <div className="absolute bottom-4 left-1/2 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+              Token
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="text-[10px] font-bold uppercase text-accent hover:text-accent-strong"
+                onClick={async () => {
+                  try {
+                    const created = await api.post<TokenPublic>(
+                      `/tabletops/${tabletopId}/vtt/tokens/${selectedToken.id}/duplicate`,
+                      {},
+                      token,
+                    );
+                    setTokens((prev) => [...prev, created]);
+                  } catch {
+                    // ignore
+                  }
+                }}
+              >
+                Duplicar
+              </button>
+              <button
+                type="button"
+                className="text-[10px] font-bold uppercase text-danger hover:text-danger/80"
+                onClick={() => deleteToken(selectedToken)}
+              >
+                Remover
+              </button>
+            </div>
+          </div>
+          <Input
+            value={selectedToken.name ?? ""}
+            onChange={(e) => updateSelectedToken({ name: e.target.value || null })}
+            placeholder="Nome (nameplate)"
+            className="py-1.5 text-xs"
+          />
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              value={selectedToken.hp_current ?? ""}
+              onChange={(e) =>
+                updateSelectedToken({ hp_current: e.target.value === "" ? null : Number(e.target.value) })
+              }
+              placeholder="PV atual"
+              className="flex-1 py-1.5 text-xs"
+            />
+            <Input
+              type="number"
+              value={selectedToken.hp_max ?? ""}
+              onChange={(e) =>
+                updateSelectedToken({ hp_max: e.target.value === "" ? null : Number(e.target.value) })
+              }
+              placeholder="PV máximo"
+              className="flex-1 py-1.5 text-xs"
+            />
+          </div>
+          <Select
+            value={selectedToken.size_category ?? ""}
+            onChange={(e) => {
+              const cat = (e.target.value || null) as SizeCategory | null;
+              const patch: Partial<TokenPublic> = { size_category: cat };
+              if (cat) patch.size = grid.size * SIZE_CATEGORY_MULTIPLIER[cat];
+              updateSelectedToken(patch);
+            }}
+            className="py-1.5 text-xs"
+          >
+            <option value="">Tamanho livre</option>
+            {(Object.keys(SIZE_CATEGORY_LABELS) as SizeCategory[]).map((cat) => (
+              <option key={cat} value={cat}>
+                {SIZE_CATEGORY_LABELS[cat]}
+              </option>
+            ))}
+          </Select>
+          <label className="flex items-center justify-between text-xs text-text-muted">
+            Emite luz
+            <input
+              type="checkbox"
+              checked={selectedToken.emits_light}
+              onChange={(e) => updateSelectedToken({ emits_light: e.target.checked })}
+            />
+          </label>
+          {selectedToken.emits_light && (
+            <Input
+              type="number"
+              value={selectedToken.light_radius ?? ""}
+              onChange={(e) =>
+                updateSelectedToken({ light_radius: e.target.value === "" ? null : Number(e.target.value) })
+              }
+              placeholder="Raio de luz (px)"
+              className="py-1.5 text-xs"
+            />
+          )}
         </div>
       )}
 

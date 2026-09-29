@@ -84,6 +84,27 @@ async def test_dm_can_configure_grid(client, auth_headers):
 
 
 @pytest.mark.asyncio
+async def test_dm_can_toggle_token_display_settings(client, auth_headers):
+    dm_token, _ = await _register(client, "gdm4")
+    tabletop_id = await _create_tabletop(client, dm_token)
+    scene = (await _create_scene(client, dm_token, tabletop_id)).json()
+    assert scene["token_settings"] == {
+        "show_nameplates": True,
+        "show_hp_bars": True,
+        "show_instance_badges": True,
+    }
+
+    resp = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/scenes/{scene['id']}",
+        json={"token_settings": {"show_nameplates": False, "show_hp_bars": True, "show_instance_badges": False}},
+        headers=auth_headers(dm_token),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["token_settings"]["show_nameplates"] is False
+    assert resp.json()["token_settings"]["show_instance_badges"] is False
+
+
+@pytest.mark.asyncio
 async def test_player_cannot_configure_grid(client, auth_headers):
     dm_token, _ = await _register(client, "gdm3")
     player_token, _ = await _register(client, "gplayer3")
