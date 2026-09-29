@@ -12,6 +12,7 @@ import {
   Grid3x3,
   History as HistoryIcon,
   Key,
+  ListOrdered,
   Map as MapIcon,
   Minus,
   PenLine,
@@ -31,6 +32,7 @@ import type {
   FogStroke,
   FolderPublic,
   GridConfig,
+  InitiativePublic,
   MapHistoryEntryPublic,
   MapNotePublic,
   Point,
@@ -47,6 +49,7 @@ import { DirectoryPanel } from "@/components/vtt/DirectoryPanel";
 import { DrawingLayer, type PendingDrawing } from "@/components/vtt/DrawingLayer";
 import { FogLayer } from "@/components/vtt/FogLayer";
 import { GridLayer, snapToGrid } from "@/components/vtt/GridLayer";
+import { InitiativeTracker } from "@/components/vtt/InitiativeTracker";
 
 const NOTE_ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number }>> = {
   StickyNote,
@@ -73,7 +76,7 @@ const SIZE_CATEGORY_MULTIPLIER: Record<SizeCategory, number> = {
 };
 
 type Transform = { x: number; y: number; scale: number };
-type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid" | "draw" | "fog";
+type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid" | "draw" | "fog" | "initiative";
 type FogTool = "reveal" | "hide" | null;
 type RulerLine = { startX: number; startY: number; endX: number; endY: number };
 type DrawTool = DrawingKind | "erase" | null;
@@ -89,6 +92,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [tokenFolders, setTokenFolders] = useState<FolderPublic[]>([]);
   const [notes, setNotes] = useState<MapNotePublic[]>([]);
   const [drawings, setDrawings] = useState<DrawingPublic[]>([]);
+  const [initiative, setInitiative] = useState<InitiativePublic | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -161,8 +165,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       api.get<FolderPublic[]>(`/tabletops/${tabletopId}/vtt/folders?kind=token`, token),
       api.get<MapNotePublic[]>(`/tabletops/${tabletopId}/vtt/notes`, token),
       api.get<DrawingPublic[]>(`/tabletops/${tabletopId}/vtt/drawings`, token),
+      api.get<InitiativePublic>(`/tabletops/${tabletopId}/vtt/initiative`, token),
     ]).then(
-      ([tt, tk, sc, tpl, sf, tf, nt, dr]) => {
+      ([tt, tk, sc, tpl, sf, tf, nt, dr, ini]) => {
         if (!ignore) {
           setTabletop(tt);
           setBackgroundUrl(tt.background_image_url);
@@ -173,6 +178,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setTokenFolders(tf);
           setNotes(nt);
           setDrawings(dr);
+          setInitiative(ini);
           setLoading(false);
         }
       },
@@ -262,6 +268,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setDrawings((prev) => (prev.some((d) => d.id === msg.drawing.id) ? prev : [...prev, msg.drawing]));
         } else if (msg.type === "drawing_deleted") {
           setDrawings((prev) => prev.filter((d) => d.id !== msg.drawing_id));
+        } else if (msg.type === "initiative_updated") {
+          setInitiative(msg.initiative);
         }
       } catch {
         // ignore malformed messages
@@ -393,6 +401,50 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       const ratio = nextScale / prev.scale;
       return { scale: nextScale, x: px - (px - prev.x) * ratio, y: py - (py - prev.y) * ratio };
     });
+  };
+
+  const addInitiativeEntry = async (data: {
+    token_id: string | null;
+    label: string;
+    value: number;
+    hp_current: number | null;
+    hp_max: number | null;
+  }) => {
+    try {
+      const updated = await api.post<InitiativePublic>(
+        `/tabletops/${tabletopId}/vtt/initiative/entries`,
+        data,
+        token,
+      );
+      setInitiative(updated);
+    } catch {
+      // ignore
+    }
+  };
+
+  const removeInitiativeEntry = async (entryId: string) => {
+    try {
+      const updated = await api.del<InitiativePublic>(
+        `/tabletops/${tabletopId}/vtt/initiative/entries/${entryId}`,
+        token,
+      );
+      setInitiative(updated);
+    } catch {
+      // ignore
+    }
+  };
+
+  const postInitiativeAction = async (action: "start" | "next" | "previous" | "end") => {
+    try {
+      const updated = await api.post<InitiativePublic>(
+        `/tabletops/${tabletopId}/vtt/initiative/${action}`,
+        {},
+        token,
+      );
+      setInitiative(updated);
+    } catch {
+      // ignore
+    }
   };
 
   const createDrawing = async (kind: DrawingKind, points: Point[]) => {
@@ -1310,6 +1362,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           </ToolbarIconButton>
         )}
         <ToolbarIconButton
+          title="Iniciativa"
+          active={openPanel === "initiative"}
+          onClick={() => togglePanel("initiative")}
+        >
+          <ListOrdered size={18} />
+        </ToolbarIconButton>
+        <ToolbarIconButton
           title="Tokens"
           active={openPanel === "tokens"}
           onClick={() => togglePanel("tokens")}
@@ -1589,6 +1648,20 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             <p className="text-[10px] text-text-faint">Arraste no mapa para pintar.</p>
           )}
         </div>
+      )}
+
+      {openPanel === "initiative" && initiative && (
+        <InitiativeTracker
+          initiative={initiative}
+          iAmDm={iAmDm}
+          selectedToken={selectedToken}
+          onAddEntry={addInitiativeEntry}
+          onRemoveEntry={removeInitiativeEntry}
+          onStart={() => postInitiativeAction("start")}
+          onNext={() => postInitiativeAction("next")}
+          onPrevious={() => postInitiativeAction("previous")}
+          onEnd={() => postInitiativeAction("end")}
+        />
       )}
 
       {openPanel === "tokens" && (

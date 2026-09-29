@@ -206,6 +206,25 @@ export interface DrawingPublic {
 
 export const NOTE_ICON_CHOICES = ["StickyNote", "Skull", "Key", "DoorClosed", "Flame", "Swords"] as const;
 
+export interface InitiativeEntry {
+  id: string;
+  token_id: string | null;
+  label: string;
+  value: number;
+  hp_current: number | null;
+  hp_max: number | null;
+}
+
+export interface InitiativePublic {
+  id: string;
+  tabletop_id: string;
+  entries: InitiativeEntry[];
+  current_index: number;
+  round: number;
+  is_active: boolean;
+  auto_sort: boolean;
+}
+
 /** Mirrors backend RULEBOOK_REGISTRY attribute definitions (app/models/rulebooks.py). */
 export const ATTRIBUTE_DEFS: Record<string, { key: string; label: string }[]> = {
   ordem_paranormal_classico: [

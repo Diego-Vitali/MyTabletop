@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.storage import UPLOAD_DIR
 from app.models.drawing import Drawing
 from app.models.folder import Folder
+from app.models.initiative import Initiative
 from app.models.map_history import MapHistoryEntry
 from app.models.map_note import MapNote
 from app.models.scene import Scene
@@ -22,6 +23,7 @@ from app.routers import (
     auth,
     drawings,
     folders,
+    initiative,
     map_notes,
     sheets,
     tabletops,
@@ -49,6 +51,7 @@ async def lifespan(app: FastAPI):
             TokenTemplate,
             MapNote,
             Drawing,
+            Initiative,
         ],
     )
     yield
@@ -77,6 +80,7 @@ app.include_router(token_templates.router)
 app.include_router(tokens.router)
 app.include_router(map_notes.router)
 app.include_router(drawings.router)
+app.include_router(initiative.router)
 app.include_router(ws.router)
 
 

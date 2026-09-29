@@ -7,6 +7,7 @@ from mongomock_motor import AsyncMongoMockClient
 from app.main import app
 from app.models.drawing import Drawing
 from app.models.folder import Folder
+from app.models.initiative import Initiative
 from app.models.map_history import MapHistoryEntry
 from app.models.map_note import MapNote
 from app.models.scene import Scene
@@ -41,6 +42,7 @@ async def client():
             TokenTemplate,
             MapNote,
             Drawing,
+            Initiative,
         ],
     )
     transport = ASGITransport(app=app)
