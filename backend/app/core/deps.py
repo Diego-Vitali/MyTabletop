@@ -4,6 +4,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.security import decode_access_token
+from app.models.drawing import Drawing
 from app.models.folder import Folder
 from app.models.map_note import MapNote
 from app.models.scene import Scene
@@ -132,3 +133,10 @@ async def get_map_note_or_404(tabletop_id: str, note_id: str) -> MapNote:
     if not note or note.tabletop_id != tabletop_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Anotação não encontrada")
     return note
+
+
+async def get_drawing_or_404(tabletop_id: str, drawing_id: str) -> Drawing:
+    drawing = await Drawing.get(PydanticObjectId(drawing_id))
+    if not drawing or drawing.tabletop_id != tabletop_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Desenho não encontrado")
+    return drawing

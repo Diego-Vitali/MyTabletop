@@ -3,32 +3,56 @@
 import { useEffect, useRef, useState, type SyntheticEvent } from "react";
 import Link from "next/link";
 import {
+  Circle as CircleIcon,
+  DoorClosed,
   DoorOpen,
+  Eraser,
+  Flame,
   Grid3x3,
   History as HistoryIcon,
+  Key,
   Map as MapIcon,
+  Minus,
+  PenLine,
   Shapes,
+  Skull,
   StickyNote,
+  Square as SquareIcon,
+  Swords,
+  Type as TypeIcon,
   Users,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError, API_URL, WS_URL } from "@/lib/api";
 import type {
+  DrawingKind,
+  DrawingPublic,
   FolderPublic,
   GridConfig,
   MapHistoryEntryPublic,
   MapNotePublic,
+  Point,
   ScenePublic,
   SizeCategory,
   TabletopPublic,
   TokenPublic,
   TokenTemplatePublic,
 } from "@/lib/types";
-import { DEFAULT_GRID, DEFAULT_TOKEN_SETTINGS, SIZE_CATEGORY_LABELS } from "@/lib/types";
+import { DEFAULT_GRID, DEFAULT_TOKEN_SETTINGS, NOTE_ICON_CHOICES, SIZE_CATEGORY_LABELS } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Badge, Button, Input, Select, ToolbarIconButton } from "@/components/ui";
 import { DirectoryPanel } from "@/components/vtt/DirectoryPanel";
+import { DrawingLayer, type PendingDrawing } from "@/components/vtt/DrawingLayer";
 import { GridLayer, snapToGrid } from "@/components/vtt/GridLayer";
+
+const NOTE_ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number }>> = {
+  StickyNote,
+  Skull,
+  Key,
+  DoorClosed,
+  Flame,
+  Swords,
+};
 
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 4;
@@ -46,8 +70,9 @@ const SIZE_CATEGORY_MULTIPLIER: Record<SizeCategory, number> = {
 };
 
 type Transform = { x: number; y: number; scale: number };
-type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid";
+type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid" | "draw";
 type RulerLine = { startX: number; startY: number; endX: number; endY: number };
+type DrawTool = DrawingKind | "erase" | null;
 
 function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const { token, user } = useAuth();
@@ -59,6 +84,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [sceneFolders, setSceneFolders] = useState<FolderPublic[]>([]);
   const [tokenFolders, setTokenFolders] = useState<FolderPublic[]>([]);
   const [notes, setNotes] = useState<MapNotePublic[]>([]);
+  const [drawings, setDrawings] = useState<DrawingPublic[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -89,8 +115,18 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [openPanel, setOpenPanel] = useState<PanelId | null>(null);
   const [selectedTokenIds, setSelectedTokenIds] = useState<Set<string>>(new Set());
   const [addNoteMode, setAddNoteMode] = useState(false);
+  const [pendingNotePos, setPendingNotePos] = useState<{ x: number; y: number } | null>(null);
+  const [pendingNoteText, setPendingNoteText] = useState("");
+  const [pendingNoteIcon, setPendingNoteIcon] = useState("StickyNote");
   const [openNoteId, setOpenNoteId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
+  const [noteDraftIcon, setNoteDraftIcon] = useState("StickyNote");
+
+  const [drawTool, setDrawTool] = useState<DrawTool>(null);
+  const [drawColor, setDrawColor] = useState("#c1454e");
+  const [drawWidth, setDrawWidth] = useState(3);
+  const [pendingDrawing, setPendingDrawing] = useState<PendingDrawing | null>(null);
+  const drawingPtsRef = useRef<Point[] | null>(null);
 
   const [sceneUploadError, setSceneUploadError] = useState<string | null>(null);
   const [sceneUploading, setSceneUploading] = useState(false);
@@ -112,8 +148,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       api.get<FolderPublic[]>(`/tabletops/${tabletopId}/vtt/folders?kind=scene`, token),
       api.get<FolderPublic[]>(`/tabletops/${tabletopId}/vtt/folders?kind=token`, token),
       api.get<MapNotePublic[]>(`/tabletops/${tabletopId}/vtt/notes`, token),
+      api.get<DrawingPublic[]>(`/tabletops/${tabletopId}/vtt/drawings`, token),
     ]).then(
-      ([tt, tk, sc, tpl, sf, tf, nt]) => {
+      ([tt, tk, sc, tpl, sf, tf, nt, dr]) => {
         if (!ignore) {
           setTabletop(tt);
           setBackgroundUrl(tt.background_image_url);
@@ -123,6 +160,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setSceneFolders(sf);
           setTokenFolders(tf);
           setNotes(nt);
+          setDrawings(dr);
           setLoading(false);
         }
       },
@@ -153,8 +191,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setBackgroundUrl(msg.background_image_url);
           setTokens([]);
           setNotes([]);
+          setDrawings([]);
           setHistory(null);
           api.get<MapNotePublic[]>(`/tabletops/${tabletopId}/vtt/notes`, token).then(setNotes, () => {});
+          api.get<DrawingPublic[]>(`/tabletops/${tabletopId}/vtt/drawings`, token).then(setDrawings, () => {});
         } else if (msg.type === "token_added") {
           setTokens((prev) => (prev.some((t) => t.id === msg.token.id) ? prev : [...prev, msg.token]));
         } else if (msg.type === "token_moved") {
@@ -204,6 +244,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setNotes((prev) => prev.map((n) => (n.id === msg.note.id ? msg.note : n)));
         } else if (msg.type === "note_deleted") {
           setNotes((prev) => prev.filter((n) => n.id !== msg.note_id));
+        } else if (msg.type === "drawing_added") {
+          setDrawings((prev) => (prev.some((d) => d.id === msg.drawing.id) ? prev : [...prev, msg.drawing]));
+        } else if (msg.type === "drawing_deleted") {
+          setDrawings((prev) => prev.filter((d) => d.id !== msg.drawing_id));
         }
       } catch {
         // ignore malformed messages
@@ -336,28 +380,65 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     });
   };
 
-  const placeNote = async (x: number, y: number) => {
-    const text = window.prompt("Texto da anotação:");
-    if (!text || !text.trim()) return;
+  const createDrawing = async (kind: DrawingKind, points: Point[]) => {
     try {
-      const created = await api.post<MapNotePublic>(
-        `/tabletops/${tabletopId}/vtt/notes`,
-        { x, y, text: text.trim() },
+      const created = await api.post<DrawingPublic>(
+        `/tabletops/${tabletopId}/vtt/drawings`,
+        { kind, points, color: drawColor, stroke_width: drawWidth },
         token,
       );
-      setNotes((prev) => (prev.some((n) => n.id === created.id) ? prev : [...prev, created]));
+      setDrawings((prev) => (prev.some((d) => d.id === created.id) ? prev : [...prev, created]));
+    } catch {
+      // ignore — WS/reload will reconcile
+    }
+  };
+
+  const createTextDrawing = async (x: number, y: number) => {
+    const text = window.prompt("Texto:");
+    if (!text || !text.trim()) return;
+    try {
+      const created = await api.post<DrawingPublic>(
+        `/tabletops/${tabletopId}/vtt/drawings`,
+        { kind: "text", points: [{ x, y }], color: drawColor, stroke_width: drawWidth, text: text.trim() },
+        token,
+      );
+      setDrawings((prev) => (prev.some((d) => d.id === created.id) ? prev : [...prev, created]));
+    } catch {
+      // ignore
+    }
+  };
+
+  const deleteDrawing = async (d: DrawingPublic) => {
+    setDrawings((prev) => prev.filter((dr) => dr.id !== d.id));
+    try {
+      await api.del(`/tabletops/${tabletopId}/vtt/drawings/${d.id}`, token);
     } catch {
       // ignore — WS/reload will reconcile
     }
   };
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (drawTool && drawTool !== "erase" && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      if (drawTool === "text") {
+        createTextDrawing(x, y);
+        return;
+      }
+      e.currentTarget.setPointerCapture(e.pointerId);
+      drawingPtsRef.current = [{ x, y }];
+      setPendingDrawing({ kind: drawTool, points: [{ x, y }], color: drawColor, strokeWidth: drawWidth });
+      return;
+    }
     if (addNoteMode && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
       const y = (e.clientY - rect.top - transform.y) / transform.scale;
       setAddNoteMode(false);
-      placeNote(x, y);
+      setPendingNoteText("");
+      setPendingNoteIcon("StickyNote");
+      setPendingNotePos({ x, y });
       return;
     }
     if (e.shiftKey && containerRef.current) {
@@ -382,6 +463,18 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
+    if (drawingPtsRef.current && containerRef.current && drawTool && drawTool !== "erase" && drawTool !== "text") {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      if (drawTool === "freehand") {
+        drawingPtsRef.current.push({ x, y });
+      } else {
+        drawingPtsRef.current = [drawingPtsRef.current[0], { x, y }];
+      }
+      setPendingDrawing({ kind: drawTool, points: [...drawingPtsRef.current], color: drawColor, strokeWidth: drawWidth });
+      return;
+    }
     if (rulerRef.current && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
@@ -399,6 +492,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onPointerUp = () => {
+    if (drawingPtsRef.current) {
+      const pts = drawingPtsRef.current;
+      const kind = drawTool as DrawingKind;
+      drawingPtsRef.current = null;
+      setPendingDrawing(null);
+      if (pts.length >= 2) createDrawing(kind, pts);
+      return;
+    }
     dragRef.current = null;
     if (rulerRef.current) {
       rulerRef.current = null;
@@ -584,13 +685,28 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     try {
       const updated = await api.patch<MapNotePublic>(
         `/tabletops/${tabletopId}/vtt/notes/${note.id}`,
-        { text: noteDraft.trim() },
+        { text: noteDraft.trim(), icon: noteDraftIcon },
         token,
       );
       setNotes((prev) => prev.map((n) => (n.id === updated.id ? updated : n)));
       setOpenNoteId(null);
     } catch {
       // ignore
+    }
+  };
+
+  const confirmPendingNote = async () => {
+    if (!pendingNotePos || !pendingNoteText.trim()) return;
+    try {
+      const created = await api.post<MapNotePublic>(
+        `/tabletops/${tabletopId}/vtt/notes`,
+        { x: pendingNotePos.x, y: pendingNotePos.y, text: pendingNoteText.trim(), icon: pendingNoteIcon },
+        token,
+      );
+      setNotes((prev) => (prev.some((n) => n.id === created.id) ? prev : [...prev, created]));
+      setPendingNotePos(null);
+    } catch {
+      // ignore — WS/reload will reconcile
     }
   };
 
@@ -690,6 +806,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         setBackgroundUrl(created.image_url);
         setTokens([]);
         setNotes([]);
+        setDrawings([]);
       }
     } catch (err) {
       setSceneUploadError(err instanceof ApiError ? err.message : "Falha ao enviar cena");
@@ -717,6 +834,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       setBackgroundUrl(updated.image_url);
       setTokens([]);
       setNotes([]);
+      setDrawings([]);
       setHistory(null);
     } catch {
       // ignore
@@ -732,6 +850,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         setBackgroundUrl(null);
         setTokens([]);
         setNotes([]);
+        setDrawings([]);
       }
     } catch {
       // ignore
@@ -870,6 +989,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             />
           )}
           {bgSize && <GridLayer grid={grid} width={bgSize.width} height={bgSize.height} />}
+          <DrawingLayer
+            drawings={drawings}
+            pending={pendingDrawing}
+            eraseMode={drawTool === "erase"}
+            onErase={deleteDrawing}
+          />
           {ruler && (
             <svg
               className="pointer-events-none absolute"
@@ -981,37 +1106,41 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               </div>
             );
           })}
-          {notes.map((n) => (
-            <div
-              key={n.id}
-              className="absolute"
-              style={{
-                left: n.x - NOTE_SIZE / 2,
-                top: n.y - NOTE_SIZE / 2,
-                width: NOTE_SIZE,
-                height: NOTE_SIZE,
-                touchAction: "none",
-                cursor: iAmDm ? "grab" : "pointer",
-              }}
-              onPointerDown={(e) => onNotePointerDown(e, n)}
-              onPointerMove={onNotePointerMove}
-              onPointerUp={onNotePointerUp}
-            >
-              <button
-                type="button"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => {
-                  setOpenNoteId(n.id);
-                  setNoteDraft(n.text);
-                  setOpenPanel(null);
+          {notes.map((n) => {
+            const NoteIcon = NOTE_ICON_COMPONENTS[n.icon] ?? StickyNote;
+            return (
+              <div
+                key={n.id}
+                className="absolute"
+                style={{
+                  left: n.x - NOTE_SIZE / 2,
+                  top: n.y - NOTE_SIZE / 2,
+                  width: NOTE_SIZE,
+                  height: NOTE_SIZE,
+                  touchAction: "none",
+                  cursor: iAmDm ? "grab" : "pointer",
                 }}
-                className="flex h-full w-full items-center justify-center rounded-full border-2 border-bg bg-accent text-on-accent shadow-lg"
-                title={n.text}
+                onPointerDown={(e) => onNotePointerDown(e, n)}
+                onPointerMove={onNotePointerMove}
+                onPointerUp={onNotePointerUp}
               >
-                <StickyNote size={13} />
-              </button>
-            </div>
-          ))}
+                <button
+                  type="button"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => {
+                    setOpenNoteId(n.id);
+                    setNoteDraft(n.text);
+                    setNoteDraftIcon(n.icon);
+                    setOpenPanel(null);
+                  }}
+                  className="flex h-full w-full items-center justify-center rounded-full border-2 border-bg bg-accent text-on-accent shadow-lg"
+                  title={n.text}
+                >
+                  <NoteIcon size={13} />
+                </button>
+              </div>
+            );
+          })}
         </div>
         {!backgroundUrl && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-text-muted">
@@ -1070,6 +1199,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             onClick={() => togglePanel("grid")}
           >
             <Grid3x3 size={18} />
+          </ToolbarIconButton>
+        )}
+        {iAmDm && (
+          <ToolbarIconButton
+            title="Desenho"
+            active={openPanel === "draw"}
+            disabled={!activeScene}
+            onClick={() => togglePanel("draw")}
+          >
+            <PenLine size={18} />
           </ToolbarIconButton>
         )}
         <ToolbarIconButton
@@ -1237,6 +1376,66 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         </div>
       )}
 
+      {openPanel === "draw" && activeScene && (
+        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            Desenho
+          </span>
+          <div className="grid grid-cols-6 gap-1">
+            {(
+              [
+                ["freehand", PenLine, "Livre"],
+                ["line", Minus, "Linha"],
+                ["rect", SquareIcon, "Retângulo"],
+                ["circle", CircleIcon, "Círculo"],
+                ["text", TypeIcon, "Texto"],
+                ["erase", Eraser, "Apagar"],
+              ] as [DrawTool, React.ComponentType<{ size?: number }>, string][]
+            ).map(([toolValue, Icon, label]) => (
+              <button
+                key={label}
+                type="button"
+                title={label}
+                onClick={() => setDrawTool((prev) => (prev === toolValue ? null : toolValue))}
+                className={`flex h-8 w-8 items-center justify-center rounded-sm border transition ${
+                  drawTool === toolValue
+                    ? "border-accent bg-accent-soft text-accent-strong"
+                    : "border-border-soft text-text-muted hover:text-text"
+                }`}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center justify-between text-xs text-text-muted">
+            Cor
+            <input
+              type="color"
+              value={drawColor}
+              onChange={(e) => setDrawColor(e.target.value)}
+              className="h-7 w-12 rounded-sm border border-border-soft bg-transparent"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Espessura
+            <input
+              type="range"
+              min={1}
+              max={12}
+              value={drawWidth}
+              onChange={(e) => setDrawWidth(Number(e.target.value))}
+            />
+          </label>
+          {drawTool && (
+            <p className="text-[10px] text-text-faint">
+              {drawTool === "erase"
+                ? "Clique num desenho no mapa para apagá-lo."
+                : "Desenhe no mapa. Clique na ferramenta de novo para desativar."}
+            </p>
+          )}
+        </div>
+      )}
+
       {openPanel === "tokens" && (
         <div className="absolute left-4 top-16">
           <DirectoryPanel
@@ -1297,6 +1496,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   onClick={() => {
                     setOpenNoteId(n.id);
                     setNoteDraft(n.text);
+                    setNoteDraftIcon(n.icon);
                     setOpenPanel(null);
                   }}
                   className="w-full truncate rounded-sm px-1.5 py-1 text-left text-sm text-text-muted hover:bg-surface-2 hover:text-text"
@@ -1438,6 +1638,49 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         </div>
       )}
 
+      {pendingNotePos && (
+        <div className="absolute bottom-4 left-1/2 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            Nova anotação
+          </span>
+          <textarea
+            autoFocus
+            value={pendingNoteText}
+            onChange={(e) => setPendingNoteText(e.target.value)}
+            rows={3}
+            placeholder="Texto da anotação"
+            className="rounded-sm border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
+          />
+          <div className="flex gap-1">
+            {NOTE_ICON_CHOICES.map((icon) => {
+              const Icon = NOTE_ICON_COMPONENTS[icon];
+              return (
+                <button
+                  key={icon}
+                  type="button"
+                  onClick={() => setPendingNoteIcon(icon)}
+                  className={`flex h-7 w-7 items-center justify-center rounded-sm border transition ${
+                    pendingNoteIcon === icon
+                      ? "border-accent bg-accent-soft text-accent-strong"
+                      : "border-border-soft text-text-muted hover:text-text"
+                  }`}
+                >
+                  <Icon size={14} />
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" className="text-xs" onClick={() => setPendingNotePos(null)}>
+              Cancelar
+            </Button>
+            <Button type="button" className="text-xs" onClick={confirmPendingNote}>
+              Criar
+            </Button>
+          </div>
+        </div>
+      )}
+
       {openNote && (
         <div className="absolute bottom-4 left-1/2 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
           <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
@@ -1451,6 +1694,25 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 rows={3}
                 className="rounded-sm border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
               />
+              <div className="flex gap-1">
+                {NOTE_ICON_CHOICES.map((icon) => {
+                  const Icon = NOTE_ICON_COMPONENTS[icon];
+                  return (
+                    <button
+                      key={icon}
+                      type="button"
+                      onClick={() => setNoteDraftIcon(icon)}
+                      className={`flex h-7 w-7 items-center justify-center rounded-sm border transition ${
+                        noteDraftIcon === icon
+                          ? "border-accent bg-accent-soft text-accent-strong"
+                          : "border-border-soft text-text-muted hover:text-text"
+                      }`}
+                    >
+                      <Icon size={14} />
+                    </button>
+                  );
+                })}
+              </div>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="danger" className="text-xs" onClick={() => deleteNote(openNote)}>
                   Apagar

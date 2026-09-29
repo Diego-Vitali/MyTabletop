@@ -171,9 +171,32 @@ export interface MapNotePublic {
   x: number;
   y: number;
   text: string;
+  icon: string;
   created_by: string;
   created_at: string;
 }
+
+export type DrawingKind = "freehand" | "line" | "rect" | "circle" | "text";
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface DrawingPublic {
+  id: string;
+  tabletop_id: string;
+  scene_id: string;
+  kind: DrawingKind;
+  points: Point[];
+  color: string;
+  stroke_width: number;
+  text: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export const NOTE_ICON_CHOICES = ["StickyNote", "Skull", "Key", "DoorClosed", "Flame", "Swords"] as const;
 
 /** Mirrors backend RULEBOOK_REGISTRY attribute definitions (app/models/rulebooks.py). */
 export const ATTRIBUTE_DEFS: Record<string, { key: string; label: string }[]> = {

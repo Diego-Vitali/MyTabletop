@@ -13,6 +13,7 @@ async def create_note(tabletop: Tabletop, scene: Scene, creator: User, data: Map
         x=data.x,
         y=data.y,
         text=data.text,
+        icon=data.icon,
         created_by=str(creator.id),
     )
     await note.insert()
@@ -35,6 +36,8 @@ async def update_note(note: MapNote, data: MapNoteUpdate) -> MapNote:
         note.y = data.y
     if data.text is not None:
         note.text = data.text
+    if data.icon is not None:
+        note.icon = data.icon
     await note.save()
 
     await manager.broadcast(

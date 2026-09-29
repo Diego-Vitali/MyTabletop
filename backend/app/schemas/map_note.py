@@ -13,12 +13,14 @@ class MapNoteCreate(BaseModel):
     x: float
     y: float
     text: str = Field(min_length=1, max_length=2000)
+    icon: str = "StickyNote"
 
 
 class MapNoteUpdate(BaseModel):
     x: float | None = None
     y: float | None = None
     text: str | None = Field(default=None, min_length=1, max_length=2000)
+    icon: str | None = None
 
 
 class MapNotePublic(BaseModel):
@@ -28,6 +30,7 @@ class MapNotePublic(BaseModel):
     x: float
     y: float
     text: str
+    icon: str
     created_by: str
     created_at: datetime
 
@@ -40,6 +43,7 @@ class MapNotePublic(BaseModel):
             x=note.x,
             y=note.y,
             text=note.text,
+            icon=note.icon,
             created_by=note.created_by,
             created_at=note.created_at,
         )

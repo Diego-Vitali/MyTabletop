@@ -8,6 +8,7 @@ from pymongo import AsyncMongoClient
 
 from app.core.config import settings
 from app.core.storage import UPLOAD_DIR
+from app.models.drawing import Drawing
 from app.models.folder import Folder
 from app.models.map_history import MapHistoryEntry
 from app.models.map_note import MapNote
@@ -17,7 +18,19 @@ from app.models.tabletop import Tabletop
 from app.models.token import Token
 from app.models.token_template import TokenTemplate
 from app.models.user import User
-from app.routers import auth, folders, map_notes, sheets, tabletops, token_templates, tokens, users, vtt, ws
+from app.routers import (
+    auth,
+    drawings,
+    folders,
+    map_notes,
+    sheets,
+    tabletops,
+    token_templates,
+    tokens,
+    users,
+    vtt,
+    ws,
+)
 
 
 @asynccontextmanager
@@ -35,6 +48,7 @@ async def lifespan(app: FastAPI):
             Scene,
             TokenTemplate,
             MapNote,
+            Drawing,
         ],
     )
     yield
@@ -62,6 +76,7 @@ app.include_router(folders.router)
 app.include_router(token_templates.router)
 app.include_router(tokens.router)
 app.include_router(map_notes.router)
+app.include_router(drawings.router)
 app.include_router(ws.router)
 
 
