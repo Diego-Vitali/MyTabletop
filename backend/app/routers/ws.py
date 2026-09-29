@@ -2,6 +2,7 @@ import jwt
 from beanie import PydanticObjectId
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.core.deps import is_dm
 from app.core.security import decode_access_token
 from app.core.ws_manager import manager
 from app.models.tabletop import Tabletop
@@ -30,7 +31,7 @@ async def tabletop_ws(websocket: WebSocket, tabletop_id: str) -> None:
         await websocket.close(code=4003)
         return
 
-    await manager.connect(tabletop_id, websocket)
+    await manager.connect(tabletop_id, websocket, str(user.id), is_dm(tabletop, user))
     try:
         while True:
             data = await websocket.receive_json()
