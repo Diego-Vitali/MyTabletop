@@ -16,11 +16,13 @@ import {
   Map as MapIcon,
   Minus,
   PenLine,
+  Plus,
   Shapes,
   Skull,
   StickyNote,
   Square as SquareIcon,
   Swords,
+  Trash2,
   Type as TypeIcon,
   Users,
 } from "lucide-react";
@@ -29,6 +31,7 @@ import { api, ApiError, API_URL, WS_URL } from "@/lib/api";
 import type {
   DrawingKind,
   DrawingPublic,
+  EncounterPublic,
   FogStroke,
   FolderPublic,
   GridConfig,
@@ -93,6 +96,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [notes, setNotes] = useState<MapNotePublic[]>([]);
   const [drawings, setDrawings] = useState<DrawingPublic[]>([]);
   const [initiative, setInitiative] = useState<InitiativePublic | null>(null);
+  const [encounters, setEncounters] = useState<EncounterPublic[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -148,6 +152,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [sceneUploading, setSceneUploading] = useState(false);
   const [templateUploadError, setTemplateUploadError] = useState<string | null>(null);
   const [templateUploading, setTemplateUploading] = useState(false);
+  const [showEncounterForm, setShowEncounterForm] = useState(false);
+  const [encounterName, setEncounterName] = useState("");
+  const [encounterTemplateIds, setEncounterTemplateIds] = useState<Set<string>>(new Set());
 
   const [history, setHistory] = useState<MapHistoryEntryPublic[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -166,8 +173,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       api.get<MapNotePublic[]>(`/tabletops/${tabletopId}/vtt/notes`, token),
       api.get<DrawingPublic[]>(`/tabletops/${tabletopId}/vtt/drawings`, token),
       api.get<InitiativePublic>(`/tabletops/${tabletopId}/vtt/initiative`, token),
+      api.get<EncounterPublic[]>(`/tabletops/${tabletopId}/vtt/encounters`, token),
     ]).then(
-      ([tt, tk, sc, tpl, sf, tf, nt, dr, ini]) => {
+      ([tt, tk, sc, tpl, sf, tf, nt, dr, ini, enc]) => {
         if (!ignore) {
           setTabletop(tt);
           setBackgroundUrl(tt.background_image_url);
@@ -179,6 +187,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setNotes(nt);
           setDrawings(dr);
           setInitiative(ini);
+          setEncounters(enc);
           setLoading(false);
         }
       },
@@ -270,6 +279,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           setDrawings((prev) => prev.filter((d) => d.id !== msg.drawing_id));
         } else if (msg.type === "initiative_updated") {
           setInitiative(msg.initiative);
+        } else if (msg.type === "encounter_created") {
+          setEncounters((prev) =>
+            prev.some((e) => e.id === msg.encounter.id) ? prev : [...prev, msg.encounter],
+          );
+        } else if (msg.type === "encounter_deleted") {
+          setEncounters((prev) => prev.filter((e) => e.id !== msg.encounter_id));
         }
       } catch {
         // ignore malformed messages
@@ -1069,6 +1084,50 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
+  const createEncounter = async () => {
+    if (!encounterName.trim() || encounterTemplateIds.size === 0) return;
+    try {
+      const created = await api.post<EncounterPublic>(
+        `/tabletops/${tabletopId}/vtt/encounters`,
+        { name: encounterName.trim(), template_ids: Array.from(encounterTemplateIds) },
+        token,
+      );
+      setEncounters((prev) => (prev.some((e) => e.id === created.id) ? prev : [...prev, created]));
+      setEncounterName("");
+      setEncounterTemplateIds(new Set());
+      setShowEncounterForm(false);
+    } catch {
+      // ignore
+    }
+  };
+
+  const deleteEncounterHandler = async (encounter: EncounterPublic) => {
+    if (!window.confirm(`Apagar o encontro "${encounter.name}"?`)) return;
+    try {
+      await api.del(`/tabletops/${tabletopId}/vtt/encounters/${encounter.id}`, token);
+      setEncounters((prev) => prev.filter((e) => e.id !== encounter.id));
+    } catch {
+      // ignore
+    }
+  };
+
+  const spawnEncounter = async (encounter: EncounterPublic) => {
+    if (!backgroundUrl || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const centerX = (rect.width / 2 - transform.x) / transform.scale;
+    const centerY = (rect.height / 2 - transform.y) / transform.scale;
+    try {
+      const created = await api.post<TokenPublic[]>(
+        `/tabletops/${tabletopId}/vtt/encounters/${encounter.id}/spawn`,
+        { x: centerX, y: centerY },
+        token,
+      );
+      setTokens((prev) => [...prev, ...created.filter((t) => !prev.some((p) => p.id === t.id))]);
+    } catch {
+      // ignore
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-dvh w-dvw items-center justify-center bg-bg text-text-muted">
@@ -1665,7 +1724,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openPanel === "tokens" && (
-        <div className="absolute left-4 top-16">
+        <div className="absolute left-4 top-16 flex flex-col gap-2">
           <DirectoryPanel
             title="Tokens"
             items={templates}
@@ -1694,6 +1753,93 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               </button>
             )}
           />
+
+          <div className="flex max-h-[40vh] w-80 flex-col gap-2 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+              Encontros
+            </span>
+            <ul className="flex flex-col gap-1">
+              {encounters.map((e) => (
+                <li key={e.id} className="flex items-center gap-2 text-sm">
+                  <span className="min-w-0 flex-1 truncate">{e.name}</span>
+                  <span className="shrink-0 text-[10px] text-text-faint">{e.members.length}</span>
+                  <button
+                    type="button"
+                    onClick={() => spawnEncounter(e)}
+                    disabled={!backgroundUrl}
+                    className="shrink-0 text-[10px] font-bold uppercase text-accent hover:text-accent-strong disabled:opacity-40"
+                  >
+                    Spawn
+                  </button>
+                  {(iAmDm || e.created_by === user?.id) && (
+                    <button
+                      type="button"
+                      onClick={() => deleteEncounterHandler(e)}
+                      className="shrink-0 text-text-faint transition hover:text-danger"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </li>
+              ))}
+              {encounters.length === 0 && !showEncounterForm && (
+                <p className="text-xs text-text-muted">Nenhum encontro salvo ainda.</p>
+              )}
+            </ul>
+
+            {showEncounterForm ? (
+              <div className="flex flex-col gap-2 border-t border-border-soft pt-2">
+                <Input
+                  value={encounterName}
+                  onChange={(e) => setEncounterName(e.target.value)}
+                  placeholder="Nome do encontro"
+                  className="py-1.5 text-xs"
+                />
+                <div className="flex max-h-32 flex-col gap-1 overflow-y-auto">
+                  {templates.map((t) => (
+                    <label key={t.id} className="flex items-center gap-2 text-xs text-text-muted">
+                      <input
+                        type="checkbox"
+                        checked={encounterTemplateIds.has(t.id)}
+                        onChange={(e) => {
+                          const next = new Set(encounterTemplateIds);
+                          if (e.target.checked) next.add(t.id);
+                          else next.delete(t.id);
+                          setEncounterTemplateIds(next);
+                        }}
+                      />
+                      {t.name}
+                    </label>
+                  ))}
+                  {templates.length === 0 && (
+                    <p className="text-xs text-text-muted">Adicione tokens à biblioteca primeiro.</p>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-xs"
+                    onClick={() => setShowEncounterForm(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button type="button" className="text-xs" onClick={createEncounter}>
+                    Salvar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowEncounterForm(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-text-muted transition hover:text-text"
+              >
+                <Plus size={14} />
+                Novo encontro
+              </button>
+            )}
+          </div>
         </div>
       )}
 

@@ -215,6 +215,21 @@ export interface InitiativeEntry {
   hp_max: number | null;
 }
 
+export interface EncounterMember {
+  template_id: string;
+  offset_x: number;
+  offset_y: number;
+}
+
+export interface EncounterPublic {
+  id: string;
+  tabletop_id: string;
+  name: string;
+  members: EncounterMember[];
+  created_by: string;
+  created_at: string;
+}
+
 export interface InitiativePublic {
   id: string;
   tabletop_id: string;
