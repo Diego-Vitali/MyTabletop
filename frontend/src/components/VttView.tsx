@@ -83,6 +83,12 @@ type PanelId = "members" | "history" | "scenes" | "tokens" | "notes" | "grid" | 
 type FogTool = "reveal" | "hide" | null;
 type RulerLine = { startX: number; startY: number; endX: number; endY: number };
 type DrawTool = DrawingKind | "erase" | null;
+type UndoAction =
+  | { kind: "moveToken"; tokenId: string; from: { x: number; y: number } }
+  | { kind: "createToken"; tokenId: string }
+  | { kind: "deleteToken"; snapshot: TokenPublic }
+  | { kind: "createDrawing"; drawingId: string }
+  | { kind: "deleteDrawing"; snapshot: DrawingPublic };
 
 function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const { token, user } = useAuth();
@@ -147,6 +153,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   );
   const fogPtsRef = useRef<Point[] | null>(null);
   const fogStrokeCounterRef = useRef(0);
+  const undoStackRef = useRef<UndoAction[]>([]);
 
   const [sceneUploadError, setSceneUploadError] = useState<string | null>(null);
   const [sceneUploading, setSceneUploading] = useState(false);
@@ -319,12 +326,102 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     return `${units.toFixed(1)} × ${grid.unit_label}`;
   };
 
+  const pushUndo = (action: UndoAction) => {
+    undoStackRef.current.push(action);
+    if (undoStackRef.current.length > 25) undoStackRef.current.shift();
+  };
+
+  // Undo is deliberately scoped to token create/move/delete and drawing
+  // create/delete — the most common "oops" actions during a session.
+  // Restoring a deleted raw-uploaded token isn't supported (its image
+  // file isn't kept client-side); only template-sourced tokens can be
+  // recreated via the from-template endpoint.
+  const undo = async () => {
+    const action = undoStackRef.current.pop();
+    if (!action) return;
+    if (action.kind === "moveToken") {
+      try {
+        const updated = await api.patch<TokenPublic>(
+          `/tabletops/${tabletopId}/vtt/tokens/${action.tokenId}`,
+          { x: action.from.x, y: action.from.y },
+          token,
+        );
+        setTokens((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));
+      } catch {
+        // ignore
+      }
+    } else if (action.kind === "createToken") {
+      try {
+        await api.del(`/tabletops/${tabletopId}/vtt/tokens/${action.tokenId}`, token);
+        setTokens((prev) => prev.filter((t) => t.id !== action.tokenId));
+      } catch {
+        // ignore
+      }
+    } else if (action.kind === "deleteToken") {
+      if (!action.snapshot.template_id) return;
+      try {
+        const created = await api.post<TokenPublic>(
+          `/tabletops/${tabletopId}/vtt/tokens/from-template/${action.snapshot.template_id}`,
+          { x: action.snapshot.x, y: action.snapshot.y },
+          token,
+        );
+        const restored = await api.patch<TokenPublic>(
+          `/tabletops/${tabletopId}/vtt/tokens/${created.id}`,
+          {
+            rotation: action.snapshot.rotation,
+            flipped_x: action.snapshot.flipped_x,
+            size: action.snapshot.size,
+            name: action.snapshot.name,
+            hp_current: action.snapshot.hp_current,
+            hp_max: action.snapshot.hp_max,
+            size_category: action.snapshot.size_category,
+            emits_light: action.snapshot.emits_light,
+            light_radius: action.snapshot.light_radius,
+          },
+          token,
+        );
+        setTokens((prev) => [...prev, restored]);
+      } catch {
+        // ignore
+      }
+    } else if (action.kind === "createDrawing") {
+      try {
+        await api.del(`/tabletops/${tabletopId}/vtt/drawings/${action.drawingId}`, token);
+        setDrawings((prev) => prev.filter((d) => d.id !== action.drawingId));
+      } catch {
+        // ignore
+      }
+    } else if (action.kind === "deleteDrawing") {
+      try {
+        const created = await api.post<DrawingPublic>(
+          `/tabletops/${tabletopId}/vtt/drawings`,
+          {
+            kind: action.snapshot.kind,
+            points: action.snapshot.points,
+            color: action.snapshot.color,
+            stroke_width: action.snapshot.stroke_width,
+            text: action.snapshot.text,
+          },
+          token,
+        );
+        setDrawings((prev) => [...prev, created]);
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   // Keyboard shortcuts for the current token selection: F flip, Delete/Backspace
   // remove, Escape clear, Ctrl/Cmd+D duplicate.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement as HTMLElement | null;
       if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
         return;
       }
       if (e.key === "Escape" && selectedTokenIds.size > 0) {
@@ -334,6 +431,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       if (selectedTokenIds.size === 0) return;
       const selected = tokens.filter((t) => selectedTokenIds.has(t.id) && canMoveToken(t));
       if (selected.length === 0) return;
+
+      const NUDGE_KEYS: Record<string, [number, number]> = {
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+      };
 
       if (e.key.toLowerCase() === "f") {
         for (const t of selected) {
@@ -348,6 +452,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         setTokens((prev) => prev.filter((t) => !ids.has(t.id)));
         setSelectedTokenIds(new Set());
         for (const t of selected) {
+          pushUndo({ kind: "deleteToken", snapshot: t });
           api.del(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, token).catch(() => {});
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
@@ -355,7 +460,22 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         for (const t of selected) {
           api
             .post<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${t.id}/duplicate`, {}, token)
-            .then((created) => setTokens((prev) => (prev.some((tok) => tok.id === created.id) ? prev : [...prev, created])))
+            .then((created) => {
+              setTokens((prev) => (prev.some((tok) => tok.id === created.id) ? prev : [...prev, created]));
+              pushUndo({ kind: "createToken", tokenId: created.id });
+            })
+            .catch(() => {});
+        }
+      } else if (e.key in NUDGE_KEYS) {
+        e.preventDefault();
+        const [dx, dy] = NUDGE_KEYS[e.key];
+        const step = e.shiftKey && grid.enabled ? grid.size : 1;
+        for (const t of selected) {
+          const nextX = t.x + dx * step;
+          const nextY = t.y + dy * step;
+          setTokens((prev) => prev.map((tok) => (tok.id === t.id ? { ...tok, x: nextX, y: nextY } : tok)));
+          api
+            .patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, { x: nextX, y: nextY }, token)
             .catch(() => {});
         }
       }
@@ -470,6 +590,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         token,
       );
       setDrawings((prev) => (prev.some((d) => d.id === created.id) ? prev : [...prev, created]));
+      pushUndo({ kind: "createDrawing", drawingId: created.id });
     } catch {
       // ignore — WS/reload will reconcile
     }
@@ -485,6 +606,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         token,
       );
       setDrawings((prev) => (prev.some((d) => d.id === created.id) ? prev : [...prev, created]));
+      pushUndo({ kind: "createDrawing", drawingId: created.id });
     } catch {
       // ignore
     }
@@ -492,6 +614,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   const deleteDrawing = async (d: DrawingPublic) => {
     setDrawings((prev) => prev.filter((dr) => dr.id !== d.id));
+    pushUndo({ kind: "deleteDrawing", snapshot: d });
     try {
       await api.del(`/tabletops/${tabletopId}/vtt/drawings/${d.id}`, token);
     } catch {
@@ -712,6 +835,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       }),
     );
     for (const s of snapped) {
+      const origin = drag.origins.get(s.id);
+      if (origin && (origin.x !== s.x || origin.y !== s.y)) {
+        pushUndo({ kind: "moveToken", tokenId: s.id, from: origin });
+      }
       try {
         await api.patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${s.id}`, { x: s.x, y: s.y }, token);
       } catch {
@@ -874,6 +1001,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       next.delete(t.id);
       return next;
     });
+    pushUndo({ kind: "deleteToken", snapshot: t });
     try {
       await api.del(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, token);
     } catch {
@@ -1079,6 +1207,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         token,
       );
       setTokens((prev) => (prev.some((t) => t.id === created.id) ? prev : [...prev, created]));
+      pushUndo({ kind: "createToken", tokenId: created.id });
     } catch {
       // ignore
     }
@@ -1123,6 +1252,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         token,
       );
       setTokens((prev) => [...prev, ...created.filter((t) => !prev.some((p) => p.id === t.id))]);
+      for (const t of created) pushUndo({ kind: "createToken", tokenId: t.id });
     } catch {
       // ignore
     }
@@ -1931,6 +2061,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                       token,
                     );
                     setTokens((prev) => [...prev, created]);
+                    pushUndo({ kind: "createToken", tokenId: created.id });
                   } catch {
                     // ignore
                   }
