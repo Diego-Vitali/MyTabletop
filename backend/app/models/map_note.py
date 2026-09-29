@@ -10,6 +10,7 @@ class MapNote(Document):
     x: float
     y: float
     text: str
+    icon: str = "StickyNote"  # a lucide-react icon name, rendered by the frontend
     created_by: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

@@ -5,7 +5,10 @@ from httpx import ASGITransport, AsyncClient
 from mongomock_motor import AsyncMongoMockClient
 
 from app.main import app
+from app.models.drawing import Drawing
+from app.models.encounter import Encounter
 from app.models.folder import Folder
+from app.models.initiative import Initiative
 from app.models.map_history import MapHistoryEntry
 from app.models.map_note import MapNote
 from app.models.scene import Scene
@@ -14,6 +17,7 @@ from app.models.tabletop import Tabletop
 from app.models.token import Token
 from app.models.token_template import TokenTemplate
 from app.models.user import User
+from app.models.wall import Wall
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +43,10 @@ async def client():
             Scene,
             TokenTemplate,
             MapNote,
+            Drawing,
+            Initiative,
+            Encounter,
+            Wall,
         ],
     )
     transport = ASGITransport(app=app)

@@ -14,6 +14,7 @@ from app.services.token_service import (
     create_token,
     create_token_from_template,
     delete_token,
+    duplicate_token,
     list_tokens,
     update_token,
 )
@@ -68,8 +69,20 @@ async def update(
     require_member(tabletop, user)
     token = await get_token_or_404(tabletop_id, token_id)
     require_token_editor(tabletop, token, user)
-    token = await update_token(token, data)
+    token = await update_token(tabletop, token, data)
     return TokenPublic.from_token(token)
+
+
+@router.post("/{token_id}/duplicate", response_model=TokenPublic, status_code=201)
+async def duplicate(
+    tabletop_id: str, token_id: str, user: User = Depends(get_current_user)
+) -> TokenPublic:
+    tabletop = await get_tabletop_or_404(tabletop_id)
+    require_member(tabletop, user)
+    token = await get_token_or_404(tabletop_id, token_id)
+    require_token_editor(tabletop, token, user)
+    clone = await duplicate_token(tabletop, token, user)
+    return TokenPublic.from_token(clone)
 
 
 @router.delete("/{token_id}", status_code=204)
@@ -80,4 +93,4 @@ async def delete(
     require_member(tabletop, user)
     token = await get_token_or_404(tabletop_id, token_id)
     require_token_editor(tabletop, token, user)
-    await delete_token(token)
+    await delete_token(tabletop, token)

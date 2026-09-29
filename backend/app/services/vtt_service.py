@@ -3,11 +3,12 @@ from fastapi import UploadFile
 from app.core.storage import save_image
 from app.core.ws_manager import manager
 from app.models.map_history import MapHistoryEntry, TokenSnapshot
-from app.models.scene import Scene
+from app.models.scene import FogStroke, Scene
 from app.models.tabletop import Tabletop
 from app.models.token import Token
 from app.models.user import User
 from app.schemas.scene import ScenePublic, SceneUpdate
+from app.services.vision_service import reset_scene_cache
 
 
 async def _archive_and_clear(tabletop: Tabletop, outgoing: Scene, user: User) -> None:
@@ -76,6 +77,7 @@ async def activate_scene(tabletop: Tabletop, scene: Scene, user: User) -> Scene:
         await _archive_and_clear(tabletop, current_active, user)
         current_active.is_active = False
         await current_active.save()
+        reset_scene_cache(str(current_active.id))
 
     scene.is_active = True
     await scene.save()
@@ -92,11 +94,30 @@ async def update_scene(scene: Scene, data: SceneUpdate) -> Scene:
         scene.name = data.name
     if "folder_id" in data.model_fields_set:
         scene.folder_id = data.folder_id
+    if data.grid is not None:
+        scene.grid = data.grid
+    if data.token_settings is not None:
+        scene.token_settings = data.token_settings
+    if data.dynamic_lighting_enabled is not None:
+        scene.dynamic_lighting_enabled = data.dynamic_lighting_enabled
     await scene.save()
 
     await manager.broadcast(
         scene.tabletop_id,
         {"type": "scene_updated", "scene": ScenePublic.from_scene(scene).model_dump(mode="json")},
+    )
+    return scene
+
+
+async def set_fog(scene: Scene, fog: list[FogStroke]) -> Scene:
+    """Replaces the scene's whole fog-of-war stroke list. The frontend always
+    sends the full brush history back (simple and cheap — see FogStroke)."""
+    scene.fog = fog
+    await scene.save()
+
+    await manager.broadcast(
+        scene.tabletop_id,
+        {"type": "fog_updated", "scene_id": str(scene.id), "fog": [f.model_dump(mode="json") for f in scene.fog]},
     )
     return scene
 
@@ -107,6 +128,7 @@ async def delete_scene(tabletop: Tabletop, scene: Scene) -> None:
     was_active = scene.is_active
 
     await scene.delete()
+    reset_scene_cache(scene_id)
 
     if was_active:
         current_tokens = await Token.find(Token.tabletop_id == tabletop_id).to_list()

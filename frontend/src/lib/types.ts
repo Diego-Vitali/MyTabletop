@@ -49,6 +49,16 @@ export interface SheetPublic {
   updated_at: string;
 }
 
+export type SizeCategory = "pequeno" | "medio" | "grande" | "enorme" | "descomunal";
+
+export const SIZE_CATEGORY_LABELS: Record<SizeCategory, string> = {
+  pequeno: "Pequeno",
+  medio: "Médio",
+  grande: "Grande",
+  enorme: "Enorme",
+  descomunal: "Descomunal",
+};
+
 export interface TokenPublic {
   id: string;
   tabletop_id: string;
@@ -56,7 +66,14 @@ export interface TokenPublic {
   x: number;
   y: number;
   size: number | null;
+  rotation: number;
   flipped_x: boolean;
+  name: string | null;
+  hp_current: number | null;
+  hp_max: number | null;
+  size_category: SizeCategory | null;
+  emits_light: boolean;
+  light_radius: number | null;
   template_id: string | null;
   created_by: string;
   created_at: string;
@@ -90,6 +107,47 @@ export interface FolderPublic {
   created_at: string;
 }
 
+export interface GridConfig {
+  enabled: boolean;
+  type: "square" | "hex";
+  size: number;
+  offset_x: number;
+  offset_y: number;
+  opacity: number;
+  snap_enabled: boolean;
+  unit_label: string;
+}
+
+export const DEFAULT_GRID: GridConfig = {
+  enabled: false,
+  type: "square",
+  size: 70,
+  offset_x: 0,
+  offset_y: 0,
+  opacity: 0.5,
+  snap_enabled: true,
+  unit_label: "1,5m",
+};
+
+export interface TokenDisplaySettings {
+  show_nameplates: boolean;
+  show_hp_bars: boolean;
+  show_instance_badges: boolean;
+}
+
+export const DEFAULT_TOKEN_SETTINGS: TokenDisplaySettings = {
+  show_nameplates: true,
+  show_hp_bars: true,
+  show_instance_badges: true,
+};
+
+export interface FogStroke {
+  id: string;
+  points: Point[];
+  radius: number;
+  is_erasing: boolean;
+}
+
 export interface ScenePublic {
   id: string;
   tabletop_id: string;
@@ -97,6 +155,23 @@ export interface ScenePublic {
   name: string;
   image_url: string;
   is_active: boolean;
+  grid: GridConfig;
+  token_settings: TokenDisplaySettings;
+  fog: FogStroke[];
+  dynamic_lighting_enabled: boolean;
+  created_by: string;
+  created_at: string;
+}
+
+export interface WallPublic {
+  id: string;
+  tabletop_id: string;
+  scene_id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  blocks_light: boolean;
   created_by: string;
   created_at: string;
 }
@@ -118,8 +193,65 @@ export interface MapNotePublic {
   x: number;
   y: number;
   text: string;
+  icon: string;
   created_by: string;
   created_at: string;
+}
+
+export type DrawingKind = "freehand" | "line" | "rect" | "circle" | "text";
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface DrawingPublic {
+  id: string;
+  tabletop_id: string;
+  scene_id: string;
+  kind: DrawingKind;
+  points: Point[];
+  color: string;
+  stroke_width: number;
+  text: string | null;
+  created_by: string;
+  created_at: string;
+}
+
+export const NOTE_ICON_CHOICES = ["StickyNote", "Skull", "Key", "DoorClosed", "Flame", "Swords"] as const;
+
+export interface InitiativeEntry {
+  id: string;
+  token_id: string | null;
+  label: string;
+  value: number;
+  hp_current: number | null;
+  hp_max: number | null;
+}
+
+export interface EncounterMember {
+  template_id: string;
+  offset_x: number;
+  offset_y: number;
+}
+
+export interface EncounterPublic {
+  id: string;
+  tabletop_id: string;
+  name: string;
+  members: EncounterMember[];
+  created_by: string;
+  created_at: string;
+}
+
+export interface InitiativePublic {
+  id: string;
+  tabletop_id: string;
+  entries: InitiativeEntry[];
+  current_index: number;
+  round: number;
+  is_active: boolean;
+  auto_sort: boolean;
 }
 
 /** Mirrors backend RULEBOOK_REGISTRY attribute definitions (app/models/rulebooks.py). */

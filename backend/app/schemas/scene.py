@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from app.models.scene import FogStroke, GridConfig, TokenDisplaySettings
+
 if TYPE_CHECKING:
     from app.models.scene import Scene
 
@@ -12,6 +14,13 @@ if TYPE_CHECKING:
 class SceneUpdate(BaseModel):
     name: str | None = None
     folder_id: str | None = None
+    grid: GridConfig | None = None
+    token_settings: TokenDisplaySettings | None = None
+    dynamic_lighting_enabled: bool | None = None
+
+
+class SceneFogUpdate(BaseModel):
+    fog: list[FogStroke]
 
 
 class ScenePublic(BaseModel):
@@ -21,6 +30,10 @@ class ScenePublic(BaseModel):
     name: str
     image_url: str
     is_active: bool
+    grid: GridConfig
+    token_settings: TokenDisplaySettings
+    fog: list[FogStroke]
+    dynamic_lighting_enabled: bool
     created_by: str
     created_at: datetime
 
@@ -33,6 +46,10 @@ class ScenePublic(BaseModel):
             name=scene.name,
             image_url=f"/uploads/{scene.image_path}",
             is_active=scene.is_active,
+            grid=scene.grid,
+            token_settings=scene.token_settings,
+            fog=scene.fog,
+            dynamic_lighting_enabled=scene.dynamic_lighting_enabled,
             created_by=scene.created_by,
             created_at=scene.created_at,
         )

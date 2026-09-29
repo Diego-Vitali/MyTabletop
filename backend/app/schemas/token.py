@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from app.models.token import SizeCategory
+
 if TYPE_CHECKING:
     from app.models.token import Token
 
@@ -13,7 +15,14 @@ class TokenUpdate(BaseModel):
     x: float | None = None
     y: float | None = None
     size: float | None = None
+    rotation: float | None = None
     flipped_x: bool | None = None
+    name: str | None = None
+    hp_current: int | None = None
+    hp_max: int | None = None
+    size_category: SizeCategory | None = None
+    emits_light: bool | None = None
+    light_radius: float | None = None
 
 
 class TokenPlaceFromTemplate(BaseModel):
@@ -28,7 +37,14 @@ class TokenPublic(BaseModel):
     x: float
     y: float
     size: float | None
+    rotation: float
     flipped_x: bool
+    name: str | None
+    hp_current: int | None
+    hp_max: int | None
+    size_category: SizeCategory | None
+    emits_light: bool
+    light_radius: float | None
     template_id: str | None
     created_by: str
     created_at: datetime
@@ -42,7 +58,14 @@ class TokenPublic(BaseModel):
             x=token.x,
             y=token.y,
             size=token.size,
+            rotation=token.rotation,
             flipped_x=token.flipped_x,
+            name=token.name,
+            hp_current=token.hp_current,
+            hp_max=token.hp_max,
+            size_category=token.size_category,
+            emits_light=token.emits_light,
+            light_radius=token.light_radius,
             template_id=token.template_id,
             created_by=token.created_by,
             created_at=token.created_at,

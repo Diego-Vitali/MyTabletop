@@ -178,3 +178,119 @@ async def test_place_token_from_template(client, auth_headers):
     assert body["image_url"] == template.json()["image_url"]
     assert body["x"] == 10
     assert body["y"] == 20
+
+
+@pytest.mark.asyncio
+async def test_patch_sets_rotation_name_hp_and_size_category(client, auth_headers):
+    dm_token, _ = await _register(client, "dm6")
+    tabletop_id = await _create_tabletop(client, dm_token)
+
+    created = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens",
+        data={"x": "0", "y": "0"},
+        files=_fake_image(),
+        headers=auth_headers(dm_token),
+    )
+    token_id = created.json()["id"]
+    assert created.json()["rotation"] == 0
+    assert created.json()["name"] is None
+
+    updated = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={
+            "rotation": 45.5,
+            "name": "Goblin batedor",
+            "hp_current": 7,
+            "hp_max": 12,
+            "size_category": "grande",
+            "emits_light": True,
+            "light_radius": 150,
+        },
+        headers=auth_headers(dm_token),
+    )
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["rotation"] == 45.5
+    assert body["name"] == "Goblin batedor"
+    assert body["hp_current"] == 7
+    assert body["hp_max"] == 12
+    assert body["size_category"] == "grande"
+    assert body["emits_light"] is True
+    assert body["light_radius"] == 150
+
+    cleared = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"name": None, "hp_current": None},
+        headers=auth_headers(dm_token),
+    )
+    assert cleared.json()["name"] is None
+    assert cleared.json()["hp_current"] is None
+    # untouched fields survive an unrelated patch
+    assert cleared.json()["hp_max"] == 12
+
+
+@pytest.mark.asyncio
+async def test_duplicate_token_offsets_position_and_copies_fields(client, auth_headers):
+    dm_token, _ = await _register(client, "dm7")
+    tabletop_id = await _create_tabletop(client, dm_token)
+
+    created = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens",
+        data={"x": "100", "y": "100"},
+        files=_fake_image(),
+        headers=auth_headers(dm_token),
+    )
+    token_id = created.json()["id"]
+    await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"name": "Cultista", "size": 80},
+        headers=auth_headers(dm_token),
+    )
+
+    dup = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}/duplicate",
+        headers=auth_headers(dm_token),
+    )
+    assert dup.status_code == 201
+    body = dup.json()
+    assert body["id"] != token_id
+    assert body["name"] == "Cultista"
+    assert body["size"] == 80
+    assert body["x"] == 124
+    assert body["y"] == 124
+
+    listing = await client.get(f"/tabletops/{tabletop_id}/vtt/tokens", headers=auth_headers(dm_token))
+    assert len(listing.json()) == 2
+
+
+@pytest.mark.asyncio
+async def test_only_owner_or_dm_can_duplicate_a_token(client, auth_headers):
+    dm_token, _ = await _register(client, "dm8")
+    p1_token, _ = await _register(client, "player8a")
+    p2_token, _ = await _register(client, "player8b")
+    tabletop_id = await _create_tabletop(client, dm_token)
+    for username in ("player8a", "player8b"):
+        await client.post(
+            f"/tabletops/{tabletop_id}/members",
+            json={"username_or_email": username, "role": "player"},
+            headers=auth_headers(dm_token),
+        )
+    created = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens",
+        data={"x": "0", "y": "0"},
+        files=_fake_image(),
+        headers=auth_headers(p1_token),
+    )
+    token_id = created.json()["id"]
+
+    forbidden = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}/duplicate",
+        headers=auth_headers(p2_token),
+    )
+    assert forbidden.status_code == 403
+
+    allowed = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}/duplicate",
+        headers=auth_headers(p1_token),
+    )
+    assert allowed.status_code == 201
