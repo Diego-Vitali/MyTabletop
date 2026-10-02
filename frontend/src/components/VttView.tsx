@@ -14,8 +14,8 @@ import {
   History as HistoryIcon,
   Key,
   ListOrdered,
-  Map as MapIcon,
   Minus,
+  MousePointer2,
   PenLine,
   Plus,
   Shapes,
@@ -352,19 +352,32 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const iAmDm =
     !!user && !!tabletop && tabletop.members.some((m) => m.user_id === user.id && m.role === "dm");
 
-  const canMoveToken = (t: TokenPublic) => iAmDm || t.created_by === user?.id;
+  /** Dragging a token's position is open to any member by default — the DM
+   * opts specific tokens out via `restricted_to_dm` (blocks players only)
+   * or `locked` (blocks everyone, DM included). See require_token_mover in
+   * the backend for the matching server-side check. */
+  const canMoveToken = (t: TokenPublic) => !t.locked && (iAmDm || !t.restricted_to_dm);
+  /** Editing anything other than position (rename, HP, flip, lock flags,
+   * delete, duplicate...) stays restricted to the DM or the token's own
+   * creator — see require_token_editor in the backend. */
+  const canEditToken = (t: TokenPublic) => iAmDm || t.created_by === user?.id;
 
   const activeScene = scenes.find((s) => s.is_active) ?? null;
   const grid = activeScene?.grid ?? DEFAULT_GRID;
   const tokenSettings = activeScene?.token_settings ?? DEFAULT_TOKEN_SETTINGS;
   const fog = activeScene?.fog ?? [];
   const dynamicLightingOn = activeScene?.dynamic_lighting_enabled ?? false;
-  const playerIds = new Set((tabletop?.members ?? []).filter((m) => m.role !== "dm").map((m) => m.user_id));
+  // Any token with "emits light" on is a vision source, regardless of who
+  // placed it on the map — see vision_service.py's _compute_visible for the
+  // matching server-side fix (gating on `created_by` silently dropped
+  // tokens the DM placed on a player's behalf, which is the common case).
   const lights = tokens
-    .filter((t) => t.emits_light && playerIds.has(t.created_by))
+    .filter((t) => t.emits_light)
     .map((t) => ({ x: t.x, y: t.y, radius: t.light_radius ?? 0 }));
   const selectedToken =
     selectedTokenIds.size === 1 ? tokens.find((t) => selectedTokenIds.has(t.id)) ?? null : null;
+  const selectedTokensEditable =
+    selectedTokenIds.size > 1 ? tokens.filter((t) => selectedTokenIds.has(t.id) && canEditToken(t)) : [];
   const instanceLabel = (t: TokenPublic): string | null => {
     if (!tokenSettings.show_instance_badges || !t.template_id) return null;
     const siblings = tokens.filter((tok) => tok.template_id === t.template_id);
@@ -674,6 +687,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
+  const toggleSelectMode = () => {
+    const next = !selectMode;
+    if (next) setPanel(null);
+    setSelectMode(next);
+  };
+
   const onImageLoad = (e: SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
     setBgSize({ width: img.naturalWidth, height: img.naturalHeight });
@@ -936,6 +955,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       setPendingNotePos({ x, y });
       return;
     }
+    if (selectMode && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      marqueeRef.current = { x1: x, y1: y };
+      setMarquee({ x1: x, y1: y, x2: x, y2: y });
+      return;
+    }
     if (e.shiftKey && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
@@ -997,6 +1025,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       setRuler({ startX: rulerRef.current.startX, startY: rulerRef.current.startY, endX: x, endY: y });
       return;
     }
+    if (marqueeRef.current && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = (e.clientX - rect.left - transform.x) / transform.scale;
+      const y = (e.clientY - rect.top - transform.y) / transform.scale;
+      setMarquee({ x1: marqueeRef.current.x1, y1: marqueeRef.current.y1, x2: x, y2: y });
+      return;
+    }
     if (!dragRef.current) return;
     const { startX, startY, originX, originY } = dragRef.current;
     setTransform((prev) => ({
@@ -1032,6 +1067,27 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       drawingPtsRef.current = null;
       setPendingDrawing(null);
       if (pts.length >= 2) createDrawing(kind, pts);
+      return;
+    }
+    if (marqueeRef.current) {
+      const start = marqueeRef.current;
+      marqueeRef.current = null;
+      const rect = marquee ?? { x1: start.x1, y1: start.y1, x2: start.x1, y2: start.y1 };
+      setMarquee(null);
+      const left = Math.min(rect.x1, rect.x2);
+      const right = Math.max(rect.x1, rect.x2);
+      const top = Math.min(rect.y1, rect.y2);
+      const bottom = Math.max(rect.y1, rect.y2);
+      const inside = tokens.filter((t) => t.x >= left && t.x <= right && t.y >= top && t.y <= bottom);
+      setSelectedTokenIds(new Set(inside.map((t) => t.id)));
+      if (iAmDm) {
+        const wallsInside = walls.filter(
+          (w) =>
+            w.x1 >= left && w.x1 <= right && w.y1 >= top && w.y1 <= bottom &&
+            w.x2 >= left && w.x2 <= right && w.y2 >= top && w.y2 <= bottom,
+        );
+        setSelectedWallIds(new Set(wallsInside.map((w) => w.id)));
+      }
       return;
     }
     dragRef.current = null;
@@ -1287,6 +1343,21 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     } catch {
       // ignore
     }
+  };
+
+  /** Applies the same patch to every editable token in the current
+   * multi-selection — the "apply to all" half of the select tool. Tokens
+   * the user can't edit are silently skipped rather than failing the whole
+   * batch. */
+  const updateSelectedTokens = async (patch: Partial<TokenPublic>) => {
+    const results = await Promise.all(
+      selectedTokensEditable.map((t) =>
+        api.patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, patch, token).catch(() => null),
+      ),
+    );
+    const updated = results.filter((t): t is TokenPublic => !!t);
+    if (updated.length === 0) return;
+    setTokens((prev) => prev.map((t) => updated.find((u) => u.id === t.id) ?? t));
   };
 
   const createFolder = async (kind: "scene" | "token", name: string) => {
@@ -1723,6 +1794,17 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               />
             </svg>
           )}
+          {marquee && (
+            <div
+              className="pointer-events-none absolute border border-accent bg-accent-soft"
+              style={{
+                left: Math.min(marquee.x1, marquee.x2),
+                top: Math.min(marquee.y1, marquee.y2),
+                width: Math.abs(marquee.x2 - marquee.x1),
+                height: Math.abs(marquee.y2 - marquee.y1),
+              }}
+            />
+          )}
           {tokens.map((t) => {
             const size = t.size ?? TOKEN_SIZE;
             const selected = selectedTokenIds.has(t.id);
@@ -1996,6 +2078,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             <BrickWall size={18} />
           </ToolbarIconButton>
         )}
+        <ToolbarIconButton
+          title="Selecionar vários tokens"
+          active={selectMode}
+          disabled={!activeScene}
+          onClick={toggleSelectMode}
+        >
+          <MousePointer2 size={18} />
+        </ToolbarIconButton>
         <ToolbarIconButton
           title="Iniciativa"
           active={openPanel === "initiative"}
