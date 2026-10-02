@@ -1299,15 +1299,18 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
-  const placeTokenFromTemplate = async (template: TokenTemplatePublic) => {
+  /** Places a token from its template. With no explicit screen position
+   * (click shortcut), it lands centered in the current viewport; a drag-drop
+   * from the asset dock passes the drop's client coordinates instead. */
+  const placeTokenFromTemplate = async (template: TokenTemplatePublic, clientPos?: { x: number; y: number }) => {
     if (!backgroundUrl || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    const centerX = (rect.width / 2 - transform.x) / transform.scale;
-    const centerY = (rect.height / 2 - transform.y) / transform.scale;
+    const mapX = ((clientPos ? clientPos.x - rect.left : rect.width / 2) - transform.x) / transform.scale;
+    const mapY = ((clientPos ? clientPos.y - rect.top : rect.height / 2) - transform.y) / transform.scale;
     try {
       const created = await api.post<TokenPublic>(
         `/tabletops/${tabletopId}/vtt/tokens/from-template/${template.id}`,
-        { x: centerX, y: centerY },
+        { x: mapX, y: mapY },
         token,
       );
       setTokens((prev) => (prev.some((t) => t.id === created.id) ? prev : [...prev, created]));
@@ -1380,10 +1383,28 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   const openNote = openNoteId ? notes.find((n) => n.id === openNoteId) ?? null : null;
 
+  const assetTabSwitch = iAmDm ? (
+    <div className="flex shrink-0 overflow-hidden rounded-sm border border-border-soft">
+      {(["tokens", "scenes"] as const).map((tabValue) => (
+        <button
+          key={tabValue}
+          type="button"
+          onClick={() => setAssetTab(tabValue)}
+          className={`px-2.5 py-1.5 text-xs font-bold uppercase transition ${
+            assetTab === tabValue ? "bg-accent text-on-accent" : "bg-surface-2 text-text-muted hover:text-text"
+          }`}
+        >
+          {tabValue === "tokens" ? "Tokens" : "Cenas"}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
   return (
     <div className="relative h-dvh w-dvw overflow-hidden bg-bg">
       <div
         ref={containerRef}
+        data-drop-target="__canvas__"
         className={`relative h-full w-full touch-none active:cursor-grabbing ${
           addNoteMode ? "cursor-crosshair" : "cursor-grab"
         }`}
@@ -1749,42 +1770,6 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         </div>
       )}
 
-      {openPanel === "scenes" && iAmDm && (
-        <div className="absolute left-4 top-16">
-          <DirectoryPanel
-            title="Cenas"
-            items={scenes}
-            folders={sceneFolders}
-            itemShape="square"
-            canCreateFolder={iAmDm}
-            canUpload={iAmDm}
-            uploading={sceneUploading}
-            uploadError={sceneUploadError}
-            onCreateFolder={(name) => createFolder("scene", name)}
-            onDeleteFolder={deleteFolderHandler}
-            canManageFolder={() => iAmDm}
-            onUploadNew={uploadScene}
-            onMoveItemToFolder={moveSceneToFolder}
-            canManageItem={() => iAmDm}
-            onDeleteItem={deleteScene}
-            isItemHighlighted={(s) => s.is_active}
-            renderItemAction={(s) =>
-              s.is_active ? (
-                <Badge variant="accent">Ativa</Badge>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => activateScene(s)}
-                  className="shrink-0 text-[10px] font-bold uppercase text-accent hover:text-accent-strong"
-                >
-                  Ativar
-                </button>
-              )
-            }
-          />
-        </div>
-      )}
-
       {openPanel === "grid" && activeScene && (
         <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
           <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
@@ -2066,38 +2051,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         />
       )}
 
-      {openPanel === "tokens" && (
-        <div className="absolute left-4 top-16 flex flex-col gap-2">
-          <DirectoryPanel
-            title="Tokens"
-            items={templates}
-            folders={tokenFolders}
-            itemShape="circle"
-            canCreateFolder={true}
-            canUpload={true}
-            uploading={templateUploading}
-            uploadError={templateUploadError}
-            onCreateFolder={(name) => createFolder("token", name)}
-            onDeleteFolder={deleteFolderHandler}
-            canManageFolder={(f) => iAmDm || f.created_by === user?.id}
-            onUploadNew={uploadTemplate}
-            onMoveItemToFolder={moveTemplateToFolder}
-            canManageItem={(t) => iAmDm || t.created_by === user?.id}
-            onDeleteItem={deleteTemplate}
-            renderItemAction={(t) => (
-              <button
-                type="button"
-                onClick={() => placeTokenFromTemplate(t)}
-                disabled={!backgroundUrl}
-                title={backgroundUrl ? "Colocar no mapa" : "Defina uma cena antes"}
-                className="shrink-0 text-[10px] font-bold uppercase text-accent hover:text-accent-strong disabled:opacity-40"
-              >
-                Colocar
-              </button>
-            )}
-          />
-
-          <div className="flex max-h-[40vh] w-80 flex-col gap-2 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+      {openPanel === "encounters" && (
+        <div className="absolute left-4 top-16 flex max-h-[40vh] w-80 flex-col gap-2 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
             <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
               Encontros
             </span>
@@ -2454,6 +2409,57 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             </>
           )}
         </div>
+      )}
+
+      {/* Permanent bottom dock: tokens are visible to every member (anyone
+          can place their own character's tokens); the "Cenas" tab only
+          exists for the DM. */}
+      {assetTab === "tokens" ? (
+        <AssetDock
+          title="Tokens — arraste um token para o mapa para colocá-lo"
+          items={templates}
+          folders={tokenFolders}
+          canCreateFolder={true}
+          canUpload={true}
+          uploading={templateUploading}
+          uploadError={templateUploadError}
+          onCreateFolder={(name) => createFolder("token", name)}
+          onDeleteFolder={deleteFolderHandler}
+          canManageFolder={(f) => iAmDm || f.created_by === user?.id}
+          onUploadNew={uploadTemplate}
+          onMoveItemToFolder={moveTemplateToFolder}
+          canManageItem={(t) => iAmDm || t.created_by === user?.id}
+          onDeleteItem={deleteTemplate}
+          onDropOnCanvas={(t, clientX, clientY) =>
+            backgroundUrl && placeTokenFromTemplate(t, { x: clientX, y: clientY })
+          }
+          onDefaultAction={(t) => backgroundUrl && placeTokenFromTemplate(t)}
+          headerExtra={assetTabSwitch}
+        />
+      ) : (
+        iAmDm && (
+          <AssetDock
+            title="Cenas — arraste uma cena para o mapa para trocar"
+            items={scenes}
+            folders={sceneFolders}
+            canCreateFolder={iAmDm}
+            canUpload={iAmDm}
+            uploading={sceneUploading}
+            uploadError={sceneUploadError}
+            onCreateFolder={(name) => createFolder("scene", name)}
+            onDeleteFolder={deleteFolderHandler}
+            canManageFolder={() => iAmDm}
+            onUploadNew={uploadScene}
+            onMoveItemToFolder={moveSceneToFolder}
+            canManageItem={() => iAmDm}
+            onDeleteItem={deleteScene}
+            isItemHighlighted={(s) => s.is_active}
+            renderBadge={(s) => (s.is_active ? <Badge variant="accent">Ativa</Badge> : null)}
+            onDropOnCanvas={(s) => activateScene(s)}
+            onDefaultAction={(s) => activateScene(s)}
+            headerExtra={assetTabSwitch}
+          />
+        )
       )}
     </div>
   );
