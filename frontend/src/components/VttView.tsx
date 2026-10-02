@@ -145,8 +145,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const centeredRef = useRef(false);
 
   const [openPanel, setOpenPanel] = useState<PanelId | null>(null);
+  // The token/scene dock is a permanent bottom bar (not a toggled panel like
+  // the others) — this only tracks which of its two tabs is showing.
+  const [assetTab, setAssetTab] = useState<"tokens" | "scenes">("tokens");
   const [selectedTokenIds, setSelectedTokenIds] = useState<Set<string>>(new Set());
+  const [selectedWallIds, setSelectedWallIds] = useState<Set<string>>(new Set());
   const [addNoteMode, setAddNoteMode] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+  const marqueeRef = useRef<{ x1: number; y1: number } | null>(null);
   const [pendingNotePos, setPendingNotePos] = useState<{ x: number; y: number } | null>(null);
   const [pendingNoteText, setPendingNoteText] = useState("");
   const [pendingNoteIcon, setPendingNoteIcon] = useState("StickyNote");
@@ -161,20 +168,22 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const drawingPtsRef = useRef<Point[] | null>(null);
 
   const [fogTool, setFogTool] = useState<FogTool>(null);
+  const [fogShape, setFogShape] = useState<FogShapeKind>("brush");
   const [fogRadius, setFogRadius] = useState(50);
-  const [pendingFog, setPendingFog] = useState<{ points: Point[]; radius: number; isErasing: boolean } | null>(
-    null,
-  );
+  const [pendingFog, setPendingFog] = useState<
+    { kind: FogShapeKind; points: Point[]; radius: number; isErasing: boolean } | null
+  >(null);
   const fogPtsRef = useRef<Point[] | null>(null);
   const fogStrokeCounterRef = useRef(0);
   const undoStackRef = useRef<UndoAction[]>([]);
 
   const [walls, setWalls] = useState<WallPublic[]>([]);
   const [wallTool, setWallTool] = useState<WallTool>(null);
+  const [wallShape, setWallShape] = useState<"line" | "rect" | "circle">("line");
   const [pendingWall, setPendingWall] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(
     null,
   );
-  const wallStartRef = useRef<Point | null>(null);
+  const wallStartRef = useRef<{ x: number; y: number; shape: "line" | "rect" | "circle" } | null>(null);
 
   const [sceneUploadError, setSceneUploadError] = useState<string | null>(null);
   const [sceneUploading, setSceneUploading] = useState(false);
@@ -453,6 +462,93 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
+  const createWall = async (x1: number, y1: number, x2: number, y2: number) => {
+    try {
+      const created = await api.post<WallPublic>(
+        `/tabletops/${tabletopId}/vtt/walls`,
+        { x1, y1, x2, y2 },
+        token,
+      );
+      setWalls((prev) => (prev.some((w) => w.id === created.id) ? prev : [...prev, created]));
+    } catch {
+      // ignore
+    }
+  };
+
+  const WALL_CIRCLE_SEGMENTS = 24;
+
+  const createWallShape = async (shape: "line" | "rect" | "circle", start: Point, end: Point) => {
+    if (shape === "line") {
+      await createWall(start.x, start.y, end.x, end.y);
+      return;
+    }
+    if (shape === "rect") {
+      const x1 = Math.min(start.x, end.x);
+      const y1 = Math.min(start.y, end.y);
+      const x2 = Math.max(start.x, end.x);
+      const y2 = Math.max(start.y, end.y);
+      const corners: Point[] = [
+        { x: x1, y: y1 },
+        { x: x2, y: y1 },
+        { x: x2, y: y2 },
+        { x: x1, y: y2 },
+      ];
+      for (let i = 0; i < corners.length; i++) {
+        const a = corners[i];
+        const b = corners[(i + 1) % corners.length];
+        await createWall(a.x, a.y, b.x, b.y);
+      }
+      return;
+    }
+    // circle: start is the center, end is a point on the rim.
+    const radius = Math.hypot(end.x - start.x, end.y - start.y);
+    const pts: Point[] = Array.from({ length: WALL_CIRCLE_SEGMENTS }, (_, i) => {
+      const angle = (i / WALL_CIRCLE_SEGMENTS) * Math.PI * 2;
+      return { x: start.x + radius * Math.cos(angle), y: start.y + radius * Math.sin(angle) };
+    });
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i];
+      const b = pts[(i + 1) % pts.length];
+      await createWall(a.x, a.y, b.x, b.y);
+    }
+  };
+
+  const deleteWall = async (w: WallPublic) => {
+    setWalls((prev) => prev.filter((wl) => wl.id !== w.id));
+    try {
+      await api.del(`/tabletops/${tabletopId}/vtt/walls/${w.id}`, token);
+    } catch {
+      // ignore
+    }
+  };
+
+  // Holding M is the universal "pan" override (see onPointerDown) — tracked
+  // via plain window listeners into a ref, not state, since it's read only
+  // at pointer-event time and shouldn't trigger renders on every keystroke.
+  useEffect(() => {
+    const isTypingTarget = () => {
+      const active = document.activeElement as HTMLElement | null;
+      return !!active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "m" && !isTypingTarget()) panKeyRef.current = true;
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "m") panKeyRef.current = false;
+    };
+    const onBlur = () => {
+      panKeyRef.current = false;
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
   // Keyboard shortcuts for the current token selection: F flip, Delete/Backspace
   // remove, Escape clear, Ctrl/Cmd+D duplicate.
   useEffect(() => {
@@ -466,13 +562,26 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         undo();
         return;
       }
-      if (e.key === "Escape" && selectedTokenIds.size > 0) {
+      if (e.key === "Escape" && (selectedTokenIds.size > 0 || selectedWallIds.size > 0)) {
         setSelectedTokenIds(new Set());
+        setSelectedWallIds(new Set());
+        return;
+      }
+      if (selectedWallIds.size > 0 && iAmDm && (e.key === "Delete" || e.key === "Backspace")) {
+        e.preventDefault();
+        for (const w of walls) {
+          if (selectedWallIds.has(w.id)) deleteWall(w);
+        }
+        setSelectedWallIds(new Set());
         return;
       }
       if (selectedTokenIds.size === 0) return;
-      const selected = tokens.filter((t) => selectedTokenIds.has(t.id) && canMoveToken(t));
-      if (selected.length === 0) return;
+      const selectedAll = tokens.filter((t) => selectedTokenIds.has(t.id));
+      // Flip/delete/duplicate are property edits (creator or DM only);
+      // nudging is just a position move (open to anyone, same as dragging).
+      const editSelected = selectedAll.filter(canEditToken);
+      const moveSelected = selectedAll.filter(canMoveToken);
+      if (editSelected.length === 0 && moveSelected.length === 0) return;
 
       const NUDGE_KEYS: Record<string, [number, number]> = {
         ArrowUp: [0, -1],
@@ -525,10 +634,37 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTokenIds, tokens, tabletopId, token, iAmDm, user]);
+  }, [selectedTokenIds, selectedWallIds, tokens, walls, tabletopId, token, iAmDm, user]);
+
+  /** Sets the open panel and, if we're leaving fog/draw/walls, disarms that
+   * panel's drawing tool too — otherwise switching to, say, Grade while
+   * "Desenhar parede" was active left wall-drawing silently armed on the
+   * canvas, with no visible panel left to show it or turn it off. Replaces
+   * every direct `setOpenPanel` call in this component so that invariant
+   * always holds (a plain useEffect can't do this — see the project's
+   * no-sync-setState-in-effect lint rule in CLAUDE.md). */
+  const setPanel = (next: PanelId | null) => {
+    setOpenPanel(next);
+    setSelectMode(false);
+    if (next !== "fog") {
+      setFogTool(null);
+      setPendingFog(null);
+      fogPtsRef.current = null;
+    }
+    if (next !== "draw") {
+      setDrawTool(null);
+      setPendingDrawing(null);
+      drawingPtsRef.current = null;
+    }
+    if (next !== "walls") {
+      setWallTool(null);
+      setPendingWall(null);
+      wallStartRef.current = null;
+    }
+  };
 
   const togglePanel = (panel: PanelId) => {
-    setOpenPanel((prev) => (prev === panel ? null : panel));
+    setPanel(openPanel === panel ? null : panel);
     if (panel === "history" && history === null) {
       setHistoryLoading(true);
       api
@@ -576,28 +712,6 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         token,
       );
       setScenes((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
-    } catch {
-      // ignore
-    }
-  };
-
-  const createWall = async (x1: number, y1: number, x2: number, y2: number) => {
-    try {
-      const created = await api.post<WallPublic>(
-        `/tabletops/${tabletopId}/vtt/walls`,
-        { x1, y1, x2, y2 },
-        token,
-      );
-      setWalls((prev) => (prev.some((w) => w.id === created.id) ? prev : [...prev, created]));
-    } catch {
-      // ignore
-    }
-  };
-
-  const deleteWall = async (w: WallPublic) => {
-    setWalls((prev) => prev.filter((wl) => wl.id !== w.id));
-    try {
-      await api.del(`/tabletops/${tabletopId}/vtt/walls/${w.id}`, token);
     } catch {
       // ignore
     }
@@ -751,23 +865,52 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
+  const deleteFogShape = async (shapeId: string) => {
+    if (!activeScene) return;
+    const nextFog = activeScene.fog.filter((f) => f.id !== shapeId);
+    setScenes((prev) => prev.map((s) => (s.id === activeScene.id ? { ...s, fog: nextFog } : s)));
+    try {
+      const updated = await api.patch<ScenePublic>(
+        `/tabletops/${tabletopId}/vtt/scenes/${activeScene.id}/fog`,
+        { fog: nextFog },
+        token,
+      );
+      setScenes((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
+    } catch {
+      // ignore — WS/reload will reconcile
+    }
+  };
+
   const onPointerDown = (e: React.PointerEvent) => {
+    // Holding M is a universal "pan" override: drag the camera no matter
+    // which tool (fog, walls, drawing, ruler...) is currently armed,
+    // without having to deselect that tool first.
+    if (panKeyRef.current) {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      dragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        originX: transform.x,
+        originY: transform.y,
+      };
+      return;
+    }
     if (wallTool === "draw" && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
       const y = (e.clientY - rect.top - transform.y) / transform.scale;
       e.currentTarget.setPointerCapture(e.pointerId);
-      wallStartRef.current = { x, y };
+      wallStartRef.current = { x, y, shape: wallShape };
       setPendingWall({ x1: x, y1: y, x2: x, y2: y });
       return;
     }
-    if (fogTool && containerRef.current) {
+    if (fogTool && fogTool !== "erase" && containerRef.current) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
       const y = (e.clientY - rect.top - transform.y) / transform.scale;
       e.currentTarget.setPointerCapture(e.pointerId);
       fogPtsRef.current = [{ x, y }];
-      setPendingFog({ points: [{ x, y }], radius: fogRadius, isErasing: fogTool === "reveal" });
+      setPendingFog({ kind: fogShape, points: [{ x, y }], radius: fogRadius, isErasing: fogTool === "reveal" });
       return;
     }
     if (drawTool && drawTool !== "erase" && containerRef.current) {
@@ -870,16 +1013,17 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       const end = pendingWall ? { x: pendingWall.x2, y: pendingWall.y2 } : start;
       setPendingWall(null);
       if (Math.hypot(end.x - start.x, end.y - start.y) > 2) {
-        createWall(start.x, start.y, end.x, end.y);
+        createWallShape(start.shape, { x: start.x, y: start.y }, end);
       }
       return;
     }
     if (fogPtsRef.current) {
       const pts = fogPtsRef.current;
       const isErasing = fogTool === "reveal";
+      const kind = fogShape;
       fogPtsRef.current = null;
       setPendingFog(null);
-      commitFogStroke(pts, isErasing);
+      commitFogStroke(kind, pts, isErasing);
       return;
     }
     if (drawingPtsRef.current) {
@@ -1459,36 +1603,102 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           />
           {iAmDm && (walls.length > 0 || pendingWall) && (
             <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1}>
-              {walls.map((w) => (
-                <line
-                  key={w.id}
-                  x1={w.x1}
-                  y1={w.y1}
-                  x2={w.x2}
-                  y2={w.y2}
-                  stroke="#f2c14e"
-                  strokeWidth={3}
-                  strokeLinecap="round"
-                  style={{ pointerEvents: wallTool === "erase" ? "stroke" : "none", cursor: "pointer" }}
-                  onPointerDown={(e) => {
-                    if (wallTool !== "erase") return;
-                    e.stopPropagation();
-                    deleteWall(w);
-                  }}
-                />
-              ))}
-              {pendingWall && (
-                <line
-                  x1={pendingWall.x1}
-                  y1={pendingWall.y1}
-                  x2={pendingWall.x2}
-                  y2={pendingWall.y2}
-                  stroke="#f2c14e"
-                  strokeWidth={3}
-                  strokeDasharray="6 4"
-                  opacity={0.7}
-                />
-              )}
+              {walls.map((w) => {
+                const wallSelected = selectedWallIds.has(w.id);
+                const clickable = wallTool === "erase" || selectMode;
+                return (
+                  <g key={w.id}>
+                    {/* Thin visible line */}
+                    <line
+                      x1={w.x1}
+                      y1={w.y1}
+                      x2={w.x2}
+                      y2={w.y2}
+                      stroke={wallSelected ? "var(--color-accent)" : "#f2c14e"}
+                      strokeWidth={wallSelected ? 4 : 3}
+                      strokeLinecap="round"
+                      pointerEvents="none"
+                    />
+                    {/* Fat invisible stroke — a much easier click/select target
+                        than the 3px visible line (see the project feedback
+                        that erasing walls was "terrivelmente difícil"). Only
+                        hit-testable while erase or the select tool is armed,
+                        so it never steals clicks meant for the camera. */}
+                    {clickable && (
+                      <line
+                        x1={w.x1}
+                        y1={w.y1}
+                        x2={w.x2}
+                        y2={w.y2}
+                        stroke="transparent"
+                        strokeWidth={18}
+                        strokeLinecap="round"
+                        style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          if (wallTool === "erase") {
+                            deleteWall(w);
+                            return;
+                          }
+                          setSelectedTokenIds(new Set());
+                          setSelectedWallIds(new Set([w.id]));
+                        }}
+                      />
+                    )}
+                  </g>
+                );
+              })}
+              {pendingWall &&
+                (() => {
+                  const shape = wallShape;
+                  if (shape === "rect") {
+                    const x = Math.min(pendingWall.x1, pendingWall.x2);
+                    const y = Math.min(pendingWall.y1, pendingWall.y2);
+                    return (
+                      <rect
+                        x={x}
+                        y={y}
+                        width={Math.abs(pendingWall.x2 - pendingWall.x1)}
+                        height={Math.abs(pendingWall.y2 - pendingWall.y1)}
+                        fill="none"
+                        stroke="#f2c14e"
+                        strokeWidth={3}
+                        strokeDasharray="6 4"
+                        opacity={0.7}
+                      />
+                    );
+                  }
+                  if (shape === "circle") {
+                    const radius = Math.hypot(
+                      pendingWall.x2 - pendingWall.x1,
+                      pendingWall.y2 - pendingWall.y1,
+                    );
+                    return (
+                      <circle
+                        cx={pendingWall.x1}
+                        cy={pendingWall.y1}
+                        r={radius}
+                        fill="none"
+                        stroke="#f2c14e"
+                        strokeWidth={3}
+                        strokeDasharray="6 4"
+                        opacity={0.7}
+                      />
+                    );
+                  }
+                  return (
+                    <line
+                      x1={pendingWall.x1}
+                      y1={pendingWall.y1}
+                      x2={pendingWall.x2}
+                      y2={pendingWall.y2}
+                      stroke="#f2c14e"
+                      strokeWidth={3}
+                      strokeDasharray="6 4"
+                      opacity={0.7}
+                    />
+                  );
+                })()}
             </svg>
           )}
           {ruler && (
@@ -2158,10 +2368,37 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               Apagar
             </button>
           </div>
+          {wallTool === "draw" && (
+            <div className="flex gap-1.5">
+              {(
+                [
+                  ["line", Minus, "Linha"],
+                  ["rect", SquareIcon, "Caixa"],
+                  ["circle", CircleIcon, "Círculo"],
+                ] as [typeof wallShape, React.ComponentType<{ size?: number }>, string][]
+              ).map(([shapeValue, Icon, label]) => (
+                <button
+                  key={shapeValue}
+                  type="button"
+                  title={label}
+                  onClick={() => setWallShape(shapeValue)}
+                  className={`flex h-8 flex-1 items-center justify-center rounded-sm border transition ${
+                    wallShape === shapeValue
+                      ? "border-accent bg-accent-soft text-accent-strong"
+                      : "border-border-soft text-text-muted hover:text-text"
+                  }`}
+                >
+                  <Icon size={15} />
+                </button>
+              ))}
+            </div>
+          )}
           {wallTool && (
             <p className="text-[10px] text-text-faint">
               {wallTool === "draw"
-                ? "Arraste no mapa para desenhar uma parede."
+                ? wallShape === "circle"
+                  ? "Clique no centro e arraste até o raio desejado."
+                  : "Arraste no mapa para desenhar a forma."
                 : "Clique numa parede no mapa para apagá-la."}
             </p>
           )}
@@ -2431,19 +2668,168 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           {selectedToken.emits_light && (
             <Input
               type="number"
-              value={selectedToken.light_radius ?? ""}
-              onChange={(e) =>
-                updateSelectedToken({ light_radius: e.target.value === "" ? null : Number(e.target.value) })
+              step={0.5}
+              min={0}
+              value={
+                selectedToken.light_radius == null
+                  ? ""
+                  : Number(((selectedToken.light_radius / grid.size) * grid.unit_meters).toFixed(2))
               }
-              placeholder="Raio de luz (px)"
+              onChange={(e) => {
+                const meters = e.target.value === "" ? null : Number(e.target.value);
+                updateSelectedToken({
+                  light_radius: meters === null ? null : (meters / grid.unit_meters) * grid.size,
+                });
+              }}
+              placeholder="Raio de luz (metros)"
               className="py-1.5 text-xs"
             />
           )}
+          <div className="flex flex-col gap-2 border-t border-border-soft pt-2">
+            {iAmDm && (
+              <label className="flex items-center justify-between text-xs text-text-muted">
+                Esconder dos jogadores
+                <input
+                  type="checkbox"
+                  checked={selectedToken.hidden_from_players}
+                  onChange={(e) => updateSelectedToken({ hidden_from_players: e.target.checked })}
+                />
+              </label>
+            )}
+            <label className="flex items-center justify-between text-xs text-text-muted">
+              Bloquear para jogadores
+              <input
+                type="checkbox"
+                checked={selectedToken.restricted_to_dm}
+                onChange={(e) => updateSelectedToken({ restricted_to_dm: e.target.checked })}
+              />
+            </label>
+            <label className="flex items-center justify-between text-xs text-text-muted">
+              Travar token (ninguém move, nem o mestre)
+              <input
+                type="checkbox"
+                checked={selectedToken.locked}
+                onChange={(e) => updateSelectedToken({ locked: e.target.checked })}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {selectedTokensEditable.length > 0 && (
+        <div className="absolute right-4 top-16 flex w-80 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+              {selectedTokensEditable.length} tokens selecionados
+            </span>
+            <button
+              type="button"
+              className="text-[10px] font-bold uppercase text-danger hover:text-danger/80"
+              onClick={() => {
+                const ids = new Set(selectedTokensEditable.map((t) => t.id));
+                setTokens((prev) => prev.filter((t) => !ids.has(t.id)));
+                setSelectedTokenIds(new Set());
+                for (const t of selectedTokensEditable) {
+                  pushUndo({ kind: "deleteToken", snapshot: t });
+                  api.del(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, token).catch(() => {});
+                }
+              }}
+            >
+              Remover todos
+            </button>
+          </div>
+          <p className="text-[10px] text-text-faint">
+            Aplica a propriedade escolhida a todos os tokens selecionados que você pode editar.
+          </p>
+          <Select
+            defaultValue=""
+            onChange={(e) => {
+              const cat = (e.target.value || null) as SizeCategory | null;
+              const patch: Partial<TokenPublic> = { size_category: cat };
+              if (cat) patch.size = grid.size * SIZE_CATEGORY_MULTIPLIER[cat];
+              updateSelectedTokens(patch);
+            }}
+            className="py-1.5 text-xs"
+          >
+            <option value="" disabled>
+              Definir tamanho...
+            </option>
+            <option value="">Tamanho livre</option>
+            {(Object.keys(SIZE_CATEGORY_LABELS) as SizeCategory[]).map((cat) => (
+              <option key={cat} value={cat}>
+                {SIZE_CATEGORY_LABELS[cat]}
+              </option>
+            ))}
+          </Select>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => updateSelectedTokens({ circle_crop: true })}
+              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+            >
+              Ativar corte circular
+            </button>
+            <button
+              type="button"
+              onClick={() => updateSelectedTokens({ circle_crop: false })}
+              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+            >
+              Desativar corte circular
+            </button>
+            <button
+              type="button"
+              onClick={() => updateSelectedTokens({ restricted_to_dm: true })}
+              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+            >
+              Bloquear para jogadores
+            </button>
+            <button
+              type="button"
+              onClick={() => updateSelectedTokens({ restricted_to_dm: false })}
+              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+            >
+              Desbloquear para jogadores
+            </button>
+            <button
+              type="button"
+              onClick={() => updateSelectedTokens({ locked: true })}
+              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+            >
+              Travar tokens
+            </button>
+            <button
+              type="button"
+              onClick={() => updateSelectedTokens({ locked: false })}
+              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+            >
+              Destravar tokens
+            </button>
+          </div>
+        </div>
+      )}
+
+      {iAmDm && selectedWallIds.size > 0 && (
+        <div className="absolute left-4 bottom-20 flex items-center gap-3 rounded-md border border-border-soft bg-surface/95 px-4 py-2.5 backdrop-blur">
+          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            {selectedWallIds.size} {selectedWallIds.size === 1 ? "parede selecionada" : "paredes selecionadas"}
+          </span>
+          <button
+            type="button"
+            className="text-[10px] font-bold uppercase text-danger hover:text-danger/80"
+            onClick={() => {
+              for (const w of walls) {
+                if (selectedWallIds.has(w.id)) deleteWall(w);
+              }
+              setSelectedWallIds(new Set());
+            }}
+          >
+            Remover
+          </button>
         </div>
       )}
 
       {pendingNotePos && (
-        <div className="absolute bottom-4 left-1/2 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+        <div className="absolute left-1/2 top-16 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
           <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
             Nova anotação
           </span>
