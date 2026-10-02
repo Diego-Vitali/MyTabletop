@@ -47,7 +47,7 @@ async def test_member_can_create_token(client, auth_headers):
 
 
 @pytest.mark.asyncio
-async def test_owner_can_move_own_token_but_not_others(client, auth_headers):
+async def test_any_member_can_move_any_token_by_default(client, auth_headers):
     dm_token, _ = await _register(client, "dm2")
     p1_token, _ = await _register(client, "player2a")
     p2_token, _ = await _register(client, "player2b")
@@ -75,12 +75,108 @@ async def test_owner_can_move_own_token_but_not_others(client, auth_headers):
     assert own_move.status_code == 200
     assert own_move.json()["x"] == 5
 
+    # A different player, who didn't place this token, can still drag it —
+    # movement is open to everyone by default now (see restricted_to_dm and
+    # locked below for the DM's opt-in restrictions).
     other_move = await client.patch(
         f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
         json={"x": 99, "y": 99},
         headers=auth_headers(p2_token),
     )
-    assert other_move.status_code == 403
+    assert other_move.status_code == 200
+    assert other_move.json()["x"] == 99
+
+    # But a non-position edit (e.g. renaming) is still restricted to the
+    # creator or the DM.
+    other_rename = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"name": "Hijacked"},
+        headers=auth_headers(p2_token),
+    )
+    assert other_rename.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_restricted_to_dm_blocks_players_but_not_dm(client, auth_headers):
+    dm_token, _ = await _register(client, "dm2b")
+    player_token, _ = await _register(client, "player2c")
+    tabletop_id = await _create_tabletop(client, dm_token)
+    await client.post(
+        f"/tabletops/{tabletop_id}/members",
+        json={"username_or_email": "player2c", "role": "player"},
+        headers=auth_headers(dm_token),
+    )
+
+    created = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens",
+        data={"x": "0", "y": "0"},
+        files=_fake_image(),
+        headers=auth_headers(dm_token),
+    )
+    token_id = created.json()["id"]
+
+    lock = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"restricted_to_dm": True},
+        headers=auth_headers(dm_token),
+    )
+    assert lock.status_code == 200
+
+    player_move = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"x": 10, "y": 10},
+        headers=auth_headers(player_token),
+    )
+    assert player_move.status_code == 403
+
+    dm_move = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"x": 10, "y": 10},
+        headers=auth_headers(dm_token),
+    )
+    assert dm_move.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_locked_blocks_everyone_including_dm(client, auth_headers):
+    dm_token, _ = await _register(client, "dm2c")
+    tabletop_id = await _create_tabletop(client, dm_token)
+
+    created = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens",
+        data={"x": "0", "y": "0"},
+        files=_fake_image(),
+        headers=auth_headers(dm_token),
+    )
+    token_id = created.json()["id"]
+
+    lock = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"locked": True},
+        headers=auth_headers(dm_token),
+    )
+    assert lock.status_code == 200
+
+    dm_move = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"x": 10, "y": 10},
+        headers=auth_headers(dm_token),
+    )
+    assert dm_move.status_code == 403
+
+    unlock = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"locked": False},
+        headers=auth_headers(dm_token),
+    )
+    assert unlock.status_code == 200
+
+    dm_move_again = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"x": 10, "y": 10},
+        headers=auth_headers(dm_token),
+    )
+    assert dm_move_again.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -294,3 +390,48 @@ async def test_only_owner_or_dm_can_duplicate_a_token(client, auth_headers):
         headers=auth_headers(p1_token),
     )
     assert allowed.status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_hidden_from_players_withholds_token_entirely(client, auth_headers):
+    dm_token, _ = await _register(client, "dm9")
+    player_token, _ = await _register(client, "player9")
+    tabletop_id = await _create_tabletop(client, dm_token)
+    await client.post(
+        f"/tabletops/{tabletop_id}/members",
+        json={"username_or_email": "player9", "role": "player"},
+        headers=auth_headers(dm_token),
+    )
+
+    created = await client.post(
+        f"/tabletops/{tabletop_id}/vtt/tokens",
+        data={"x": "0", "y": "0"},
+        files=_fake_image(),
+        headers=auth_headers(dm_token),
+    )
+    token_id = created.json()["id"]
+
+    # Visible to the player before hiding.
+    before = await client.get(f"/tabletops/{tabletop_id}/vtt/tokens", headers=auth_headers(player_token))
+    assert token_id in [t["id"] for t in before.json()]
+
+    hide = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"hidden_from_players": True},
+        headers=auth_headers(dm_token),
+    )
+    assert hide.status_code == 200
+
+    # Gone from the player's listing, still present for the DM.
+    after_player = await client.get(f"/tabletops/{tabletop_id}/vtt/tokens", headers=auth_headers(player_token))
+    assert token_id not in [t["id"] for t in after_player.json()]
+    after_dm = await client.get(f"/tabletops/{tabletop_id}/vtt/tokens", headers=auth_headers(dm_token))
+    assert token_id in [t["id"] for t in after_dm.json()]
+
+    # Untouchable by a player even if they somehow know the id.
+    player_move = await client.patch(
+        f"/tabletops/{tabletop_id}/vtt/tokens/{token_id}",
+        json={"x": 5, "y": 5},
+        headers=auth_headers(player_token),
+    )
+    assert player_move.status_code == 403

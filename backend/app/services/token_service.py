@@ -45,8 +45,12 @@ async def create_token_from_template(
     return token
 
 
-async def list_tokens(tabletop_id: str) -> list[Token]:
-    return await Token.find(Token.tabletop_id == tabletop_id).to_list()
+async def list_tokens(tabletop_id: str, viewer_is_dm: bool) -> list[Token]:
+    if viewer_is_dm:
+        return await Token.find(Token.tabletop_id == tabletop_id).to_list()
+    return await Token.find(
+        Token.tabletop_id == tabletop_id, Token.hidden_from_players == False  # noqa: E712
+    ).to_list()
 
 
 async def update_token(tabletop: Tabletop, token: Token, data: TokenUpdate) -> Token:
@@ -62,6 +66,14 @@ async def update_token(tabletop: Tabletop, token: Token, data: TokenUpdate) -> T
         token.flipped_x = data.flipped_x
     if data.emits_light is not None:
         token.emits_light = data.emits_light
+    if data.circle_crop is not None:
+        token.circle_crop = data.circle_crop
+    if data.restricted_to_dm is not None:
+        token.restricted_to_dm = data.restricted_to_dm
+    if data.locked is not None:
+        token.locked = data.locked
+    if data.hidden_from_players is not None:
+        token.hidden_from_players = data.hidden_from_players
     fields_set = data.model_fields_set
     if "name" in fields_set:
         token.name = data.name
@@ -76,7 +88,9 @@ async def update_token(tabletop: Tabletop, token: Token, data: TokenUpdate) -> T
     await token.save()
 
     await gated_token_broadcast(
-        tabletop, {"type": "token_updated", "token": TokenPublic.from_token(token).model_dump(mode="json")}
+        tabletop,
+        {"type": "token_updated", "token": TokenPublic.from_token(token).model_dump(mode="json")},
+        hidden_from_players=token.hidden_from_players,
     )
     return token
 
@@ -96,21 +110,29 @@ async def duplicate_token(tabletop: Tabletop, token: Token, creator: User, offse
         hp_current=token.hp_current,
         hp_max=token.hp_max,
         size_category=token.size_category,
+        circle_crop=token.circle_crop,
         emits_light=token.emits_light,
         light_radius=token.light_radius,
+        restricted_to_dm=token.restricted_to_dm,
+        hidden_from_players=token.hidden_from_players,
         template_id=token.template_id,
         created_by=str(creator.id),
     )
     await clone.insert()
 
     await gated_token_broadcast(
-        tabletop, {"type": "token_added", "token": TokenPublic.from_token(clone).model_dump(mode="json")}
+        tabletop,
+        {"type": "token_added", "token": TokenPublic.from_token(clone).model_dump(mode="json")},
+        hidden_from_players=clone.hidden_from_players,
     )
     return clone
 
 
 async def delete_token(tabletop: Tabletop, token: Token) -> None:
     token_id = str(token.id)
+    was_hidden = token.hidden_from_players
     await token.delete()
 
-    await gated_token_broadcast(tabletop, {"type": "token_deleted", "token_id": token_id})
+    await gated_token_broadcast(
+        tabletop, {"type": "token_deleted", "token_id": token_id}, hidden_from_players=was_hidden
+    )

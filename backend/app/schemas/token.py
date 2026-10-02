@@ -21,8 +21,12 @@ class TokenUpdate(BaseModel):
     hp_current: int | None = None
     hp_max: int | None = None
     size_category: SizeCategory | None = None
+    circle_crop: bool | None = None
     emits_light: bool | None = None
     light_radius: float | None = None
+    restricted_to_dm: bool | None = None
+    locked: bool | None = None
+    hidden_from_players: bool | None = None
 
 
 class TokenPlaceFromTemplate(BaseModel):
@@ -43,8 +47,12 @@ class TokenPublic(BaseModel):
     hp_current: int | None
     hp_max: int | None
     size_category: SizeCategory | None
+    circle_crop: bool
     emits_light: bool
     light_radius: float | None
+    restricted_to_dm: bool
+    locked: bool
+    hidden_from_players: bool
     template_id: str | None
     created_by: str
     created_at: datetime
@@ -64,8 +72,12 @@ class TokenPublic(BaseModel):
             hp_current=token.hp_current,
             hp_max=token.hp_max,
             size_category=token.size_category,
+            circle_crop=token.circle_crop,
             emits_light=token.emits_light,
             light_radius=token.light_radius,
+            restricted_to_dm=token.restricted_to_dm,
+            locked=token.locked,
+            hidden_from_players=token.hidden_from_players,
             template_id=token.template_id,
             created_by=token.created_by,
             created_at=token.created_at,

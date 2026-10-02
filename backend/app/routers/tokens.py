@@ -5,8 +5,10 @@ from app.core.deps import (
     get_tabletop_or_404,
     get_token_or_404,
     get_token_template_or_404,
+    is_dm,
     require_member,
     require_token_editor,
+    require_token_mover,
 )
 from app.models.user import User
 from app.schemas.token import TokenPlaceFromTemplate, TokenPublic, TokenUpdate
@@ -54,7 +56,7 @@ async def create_from_template(
 async def list_all(tabletop_id: str, user: User = Depends(get_current_user)) -> list[TokenPublic]:
     tabletop = await get_tabletop_or_404(tabletop_id)
     require_member(tabletop, user)
-    tokens = await list_tokens(tabletop_id)
+    tokens = await list_tokens(tabletop_id, is_dm(tabletop, user))
     return [TokenPublic.from_token(t) for t in tokens]
 
 
@@ -68,7 +70,13 @@ async def update(
     tabletop = await get_tabletop_or_404(tabletop_id)
     require_member(tabletop, user)
     token = await get_token_or_404(tabletop_id, token_id)
-    require_token_editor(tabletop, token, user)
+    # A pure position update (dragging on the canvas) only needs the looser
+    # "can move" check — anyone can drag any token unless the DM restricted
+    # it. Any other field (rename, HP, lock flags...) needs full edit rights.
+    if data.model_fields_set <= {"x", "y"}:
+        require_token_mover(tabletop, token, user)
+    else:
+        require_token_editor(tabletop, token, user)
     token = await update_token(tabletop, token, data)
     return TokenPublic.from_token(token)
 

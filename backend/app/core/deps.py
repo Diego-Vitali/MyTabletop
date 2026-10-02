@@ -82,11 +82,34 @@ async def get_token_or_404(tabletop_id: str, token_id: str) -> Token:
 
 
 def require_token_editor(tabletop: Tabletop, token: Token, user: User) -> None:
-    if is_dm(tabletop, user) or token.created_by == str(user.id):
+    """Gates non-position changes (rename, HP, lock flags, delete...) — only
+    the DM or the token's own creator, and never a non-DM once the DM has
+    hidden the token (that's what "intocável pelos jogadores" means — even
+    for whoever originally placed it). See require_token_mover for plain
+    dragging, which is intentionally much more permissive."""
+    if is_dm(tabletop, user):
+        return
+    if token.hidden_from_players:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Você não tem permissão para editar/remover este token"
+        )
+    if token.created_by == str(user.id):
         return
     raise HTTPException(
-        status.HTTP_403_FORBIDDEN, "Você não tem permissão para mover/remover este token"
+        status.HTTP_403_FORBIDDEN, "Você não tem permissão para editar/remover este token"
     )
+
+
+def require_token_mover(tabletop: Tabletop, token: Token, user: User) -> None:
+    """Any member can drag any token by default — the DM only needs to
+    single out specific tokens to protect, not whitelist every mover. The
+    two opt-in restrictions aren't the same: `locked` blocks everyone,
+    including the DM, until a DM unlocks it; `restricted_to_dm` only blocks
+    non-DM members."""
+    if token.locked:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Este token está travado")
+    if not is_dm(tabletop, user) and (token.restricted_to_dm or token.hidden_from_players):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Apenas o mestre pode mover este token")
 
 
 async def get_folder_or_404(tabletop_id: str, folder_id: str) -> Folder:
