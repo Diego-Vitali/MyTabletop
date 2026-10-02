@@ -1098,7 +1098,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onTokenPointerDown = (e: React.PointerEvent, t: TokenPublic) => {
-    if (!canMoveToken(t)) return;
+    // A locked token is still selectable by whoever can edit it (so a DM
+    // can open its panel and uncheck "Travar token") — it just never starts
+    // a drag. Someone who can neither move nor edit it gets no interaction
+    // at all.
+    const movable = canMoveToken(t);
+    if (!movable && !canEditToken(t)) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     if (e.shiftKey) {
@@ -1170,7 +1175,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onResizeHandlePointerDown = (e: React.PointerEvent, t: TokenPublic) => {
-    if (!canMoveToken(t)) return;
+    if (!canEditToken(t)) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     resizeRef.current = { id: t.id, centerX: t.x, centerY: t.y };
@@ -1207,7 +1212,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const onRotateHandlePointerDown = (e: React.PointerEvent, t: TokenPublic) => {
-    if (!canMoveToken(t)) return;
+    if (!canEditToken(t)) return;
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     rotateRef.current = { id: t.id, centerX: t.x, centerY: t.y };
@@ -1827,6 +1832,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   width: size,
                   height: size,
                   touchAction: "none",
+                  // Hidden tokens render dimmed for the DM only — a visual
+                  // reminder of which tokens players can't see, never
+                  // applied for players (they never receive hidden tokens
+                  // at all, see app/services/token_service.list_tokens).
+                  opacity: t.hidden_from_players && iAmDm ? 0.45 : 1,
+                  outline: t.hidden_from_players && iAmDm ? "2px dashed var(--color-text-faint)" : undefined,
+                  outlineOffset: 2,
                   cursor: canMoveToken(t) ? "grab" : "default",
                 }}
               >
@@ -1835,12 +1847,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   src={`${API_URL}${t.image_url}`}
                   alt="Token"
                   draggable={false}
+                  onDragStart={(e) => e.preventDefault()}
                   style={{
                     transform: `${t.flipped_x ? "scaleX(-1) " : ""}rotate(${t.rotation}deg)`,
                   }}
-                  className={`h-full w-full select-none rounded-full border-2 object-cover shadow-lg ${
-                    t.hp_max && t.hp_current === 0 ? "grayscale" : ""
-                  } ${selected ? "border-accent" : "border-border-soft"}`}
+                  className={`h-full w-full select-none shadow-lg [-webkit-user-drag:none] ${
+                    t.circle_crop ? "rounded-full object-cover" : "rounded-sm object-contain"
+                  } ${t.hp_max && t.hp_current === 0 ? "grayscale" : ""} ${
+                    selected ? "border-2 border-accent" : ""
+                  }`}
                 />
                 {badge && (
                   <span className="pointer-events-none absolute -left-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-surface px-1 font-mono text-[9px] font-bold text-text shadow">
@@ -1860,7 +1875,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     {t.name}
                   </span>
                 )}
-                {canMoveToken(t) && (
+                {canEditToken(t) && (
                   <button
                     type="button"
                     onPointerDown={(e) => e.stopPropagation()}
@@ -1871,7 +1886,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     ×
                   </button>
                 )}
-                {soleSelected && canMoveToken(t) && (
+                {soleSelected && canEditToken(t) && (
                   <div
                     onPointerDown={(e) => onRotateHandlePointerDown(e, t)}
                     onPointerMove={onRotateHandlePointerMove}
@@ -1881,7 +1896,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     title="Arraste para rotacionar"
                   />
                 )}
-                {selected && canMoveToken(t) && (
+                {selected && canEditToken(t) && (
                   <div
                     onPointerDown={(e) => onResizeHandlePointerDown(e, t)}
                     onPointerMove={onResizeHandlePointerMove}
@@ -2669,8 +2684,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         </div>
       )}
 
-      {selectedToken && canMoveToken(selectedToken) && (
-        <div className="absolute bottom-4 left-1/2 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+      {selectedToken && canEditToken(selectedToken) && (
+        <div className="absolute right-4 top-16 flex max-h-[70vh] w-80 flex-col gap-2 overflow-x-hidden overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
           <div className="flex items-center justify-between">
             <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
               Token
@@ -2747,6 +2762,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               </option>
             ))}
           </Select>
+          <label className="flex items-center justify-between text-xs text-text-muted">
+            Corte circular
+            <input
+              type="checkbox"
+              checked={selectedToken.circle_crop}
+              onChange={(e) => updateSelectedToken({ circle_crop: e.target.checked })}
+            />
+          </label>
           <label className="flex items-center justify-between text-xs text-text-muted">
             Emite luz
             <input

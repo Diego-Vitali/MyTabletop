@@ -72,8 +72,12 @@ export interface TokenPublic {
   hp_current: number | null;
   hp_max: number | null;
   size_category: SizeCategory | null;
+  circle_crop: boolean;
   emits_light: boolean;
   light_radius: number | null;
+  restricted_to_dm: boolean;
+  locked: boolean;
+  hidden_from_players: boolean;
   template_id: string | null;
   created_by: string;
   created_at: string;
