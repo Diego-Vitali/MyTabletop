@@ -39,7 +39,7 @@ async def list_all(
 ) -> list[TokenTemplatePublic]:
     tabletop = await get_tabletop_or_404(tabletop_id)
     require_member(tabletop, user)
-    templates = await list_templates(tabletop_id)
+    templates = await list_templates(tabletop_id, str(user.id))
     return [TokenTemplatePublic.from_template(t) for t in templates]
 
 

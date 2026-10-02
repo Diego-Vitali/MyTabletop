@@ -21,8 +21,9 @@ async def create_template(
     )
     await template.insert()
 
-    await manager.broadcast(
+    await manager.send_to_user(
         str(tabletop.id),
+        str(creator.id),
         {
             "type": "template_created",
             "template": TokenTemplatePublic.from_template(template).model_dump(mode="json"),
@@ -31,8 +32,13 @@ async def create_template(
     return template
 
 
-async def list_templates(tabletop_id: str) -> list[TokenTemplate]:
-    return await TokenTemplate.find(TokenTemplate.tabletop_id == tabletop_id).to_list()
+async def list_templates(tabletop_id: str, creator_id: str) -> list[TokenTemplate]:
+    """Each member's token library is their own — see the VTT architecture
+    note in CLAUDE.md. Scenes stay tabletop-wide (every client needs the
+    active scene's grid/fog/lighting config), but templates are personal."""
+    return await TokenTemplate.find(
+        TokenTemplate.tabletop_id == tabletop_id, TokenTemplate.created_by == creator_id
+    ).to_list()
 
 
 async def update_template(template: TokenTemplate, data: TokenTemplateUpdate) -> TokenTemplate:
@@ -42,8 +48,9 @@ async def update_template(template: TokenTemplate, data: TokenTemplateUpdate) ->
         template.folder_id = data.folder_id
     await template.save()
 
-    await manager.broadcast(
+    await manager.send_to_user(
         template.tabletop_id,
+        template.created_by,
         {
             "type": "template_updated",
             "template": TokenTemplatePublic.from_template(template).model_dump(mode="json"),
@@ -55,6 +62,7 @@ async def update_template(template: TokenTemplate, data: TokenTemplateUpdate) ->
 async def delete_template(template: TokenTemplate) -> None:
     tabletop_id = template.tabletop_id
     template_id = str(template.id)
+    owner_id = template.created_by
     await template.delete()
 
-    await manager.broadcast(tabletop_id, {"type": "template_deleted", "template_id": template_id})
+    await manager.send_to_user(tabletop_id, owner_id, {"type": "template_deleted", "template_id": template_id})

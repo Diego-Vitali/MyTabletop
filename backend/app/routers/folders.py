@@ -35,7 +35,7 @@ async def list_all(
     require_member(tabletop, user)
     if kind is not None and kind not in ("scene", "token"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "kind inválido")
-    folders = await list_folders(tabletop_id, kind)  # type: ignore[arg-type]
+    folders = await list_folders(tabletop_id, kind, str(user.id))  # type: ignore[arg-type]
     return [FolderPublic.from_folder(f) for f in folders]
 
 
