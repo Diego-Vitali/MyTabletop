@@ -85,15 +85,14 @@ type Transform = { x: number; y: number; scale: number };
 type PanelId =
   | "members"
   | "history"
-  | "scenes"
-  | "tokens"
+  | "encounters"
   | "notes"
   | "grid"
   | "draw"
   | "fog"
   | "initiative"
   | "walls";
-type FogTool = "reveal" | "hide" | null;
+type FogTool = "reveal" | "hide" | "erase" | null;
 type RulerLine = { startX: number; startY: number; endX: number; endY: number };
 type DrawTool = DrawingKind | "erase" | null;
 type WallTool = "draw" | "erase" | null;
@@ -128,6 +127,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const dragRef = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(
     null,
   );
+  // Held-M pan override — a ref (not state) since key state doesn't need to
+  // trigger a re-render, just be read at the next pointerdown.
+  const panKeyRef = useRef(false);
   const tokenDragRef = useRef<{
     startX: number;
     startY: number;
@@ -604,7 +606,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       };
 
       if (e.key.toLowerCase() === "f") {
-        for (const t of selected) {
+        for (const t of editSelected) {
           api
             .patch<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, { flipped_x: !t.flipped_x }, token)
             .then((updated) => setTokens((prev) => prev.map((tok) => (tok.id === updated.id ? updated : tok))))
@@ -612,16 +614,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         }
       } else if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        const ids = new Set(selected.map((t) => t.id));
+        const ids = new Set(editSelected.map((t) => t.id));
         setTokens((prev) => prev.filter((t) => !ids.has(t.id)));
         setSelectedTokenIds(new Set());
-        for (const t of selected) {
+        for (const t of editSelected) {
           pushUndo({ kind: "deleteToken", snapshot: t });
           api.del(`/tabletops/${tabletopId}/vtt/tokens/${t.id}`, token).catch(() => {});
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
         e.preventDefault();
-        for (const t of selected) {
+        for (const t of editSelected) {
           api
             .post<TokenPublic>(`/tabletops/${tabletopId}/vtt/tokens/${t.id}/duplicate`, {}, token)
             .then((created) => {
@@ -634,7 +636,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         e.preventDefault();
         const [dx, dy] = NUDGE_KEYS[e.key];
         const step = e.shiftKey && grid.enabled ? grid.size : 1;
-        for (const t of selected) {
+        for (const t of moveSelected) {
           const nextX = t.x + dx * step;
           const nextY = t.y + dy * step;
           setTokens((prev) => prev.map((tok) => (tok.id === t.id ? { ...tok, x: nextX, y: nextY } : tok)));
@@ -973,8 +975,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       setRuler({ startX: x, startY: y, endX: x, endY: y });
       return;
     }
-    setOpenPanel(null);
+    setPanel(null);
     setSelectedTokenIds(new Set());
+    setSelectedWallIds(new Set());
     setOpenNoteId(null);
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
@@ -1115,6 +1118,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
     const ids = selectedTokenIds.has(t.id) && selectedTokenIds.size > 1 ? Array.from(selectedTokenIds) : [t.id];
     setSelectedTokenIds(new Set(ids));
+    if (!movable) return;
     const origins = new Map<string, { x: number; y: number }>();
     for (const id of ids) {
       const tok = tokens.find((tk) => tk.id === id);
@@ -1154,7 +1158,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     const snapped = ids
       .map((id) => tokens.find((t) => t.id === id))
       .filter((t): t is TokenPublic => !!t)
-      .map((t) => ({ id: t.id, ...snapToGrid(t.x, t.y, grid) }));
+      .map((t) => ({ id: t.id, ...snapToGrid(t.x, t.y, grid, t.size ?? TOKEN_SIZE) }));
     setTokens((prev) =>
       prev.map((t) => {
         const s = snapped.find((sp) => sp.id === t.id);
@@ -1431,6 +1435,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   };
 
   const activateScene = async (scene: ScenePublic) => {
+    // Already the live scene — activating it again would be a no-op on the
+    // server but was clearing local tokens/notes/drawings state regardless,
+    // making it look like clicking the current scene wipes its tokens.
+    if (scene.is_active) return;
     const hasDifferentActive = scenes.some((s) => s.is_active && s.id !== scene.id);
     if (
       hasDifferentActive &&
@@ -1651,6 +1659,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
+        onDragStart={(e) => e.preventDefault()}
       >
         <div
           className="absolute left-0 top-0"
@@ -1666,8 +1675,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               src={`${API_URL}${backgroundUrl}`}
               alt="Cena"
               draggable={false}
+              onDragStart={(e) => e.preventDefault()}
               onLoad={onImageLoad}
-              className="pointer-events-none max-w-none select-none"
+              className="pointer-events-none max-w-none select-none [-webkit-user-drag:none]"
             />
           )}
           {bgSize && <GridLayer grid={grid} width={bgSize.width} height={bgSize.height} />}
@@ -1934,7 +1944,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     setOpenNoteId(n.id);
                     setNoteDraft(n.text);
                     setNoteDraftIcon(n.icon);
-                    setOpenPanel(null);
+                    setPanel(null);
                   }}
                   className="flex h-full w-full items-center justify-center rounded-full border-2 border-bg bg-accent text-on-accent shadow-lg"
                   title={n.text}
@@ -2046,15 +2056,6 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
         </ToolbarIconButton>
         {iAmDm && (
           <ToolbarIconButton
-            title="Cenas"
-            active={openPanel === "scenes"}
-            onClick={() => togglePanel("scenes")}
-          >
-            <MapIcon size={18} />
-          </ToolbarIconButton>
-        )}
-        {iAmDm && (
-          <ToolbarIconButton
             title="Grade"
             active={openPanel === "grid"}
             disabled={!activeScene}
@@ -2109,9 +2110,9 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           <ListOrdered size={18} />
         </ToolbarIconButton>
         <ToolbarIconButton
-          title="Tokens"
-          active={openPanel === "tokens"}
-          onClick={() => togglePanel("tokens")}
+          title="Encontros"
+          active={openPanel === "encounters"}
+          onClick={() => togglePanel("encounters")}
         >
           <Shapes size={18} />
         </ToolbarIconButton>
@@ -2174,35 +2175,27 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             </Select>
           </label>
           <label className="flex flex-col gap-1 text-xs text-text-muted">
-            Tamanho da célula (px)
+            Dividir em quantas colunas
             <Input
               type="number"
-              min={8}
-              value={grid.size}
-              onChange={(e) => updateGrid({ size: Number(e.target.value) || grid.size })}
+              min={1}
+              disabled={!bgSize}
+              defaultValue={bgSize ? Math.max(1, Math.round(bgSize.width / grid.size)) : ""}
+              key={bgSize ? Math.round(bgSize.width / grid.size) : "no-bg"}
+              onBlur={(e) => {
+                if (!bgSize) return;
+                const cols = Math.max(1, Number(e.target.value) || 1);
+                updateGrid({ size: bgSize.width / cols, offset_x: 0, offset_y: 0 });
+              }}
               className="py-1.5 text-xs"
             />
           </label>
-          <div className="flex gap-2">
-            <label className="flex flex-1 flex-col gap-1 text-xs text-text-muted">
-              Offset X
-              <Input
-                type="number"
-                value={grid.offset_x}
-                onChange={(e) => updateGrid({ offset_x: Number(e.target.value) || 0 })}
-                className="py-1.5 text-xs"
-              />
-            </label>
-            <label className="flex flex-1 flex-col gap-1 text-xs text-text-muted">
-              Offset Y
-              <Input
-                type="number"
-                value={grid.offset_y}
-                onChange={(e) => updateGrid({ offset_y: Number(e.target.value) || 0 })}
-                className="py-1.5 text-xs"
-              />
-            </label>
-          </div>
+          {bgSize && (
+            <p className="text-[10px] text-text-faint">
+              Célula de {grid.size.toFixed(1)}px · {Math.round(bgSize.height / grid.size)} linhas na altura da
+              imagem.
+            </p>
+          )}
           <label className="flex flex-col gap-1 text-xs text-text-muted">
             Opacidade
             <input
@@ -2610,7 +2603,6 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 Novo encontro
               </button>
             )}
-          </div>
         </div>
       )}
 
@@ -2626,7 +2618,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               disabled={!backgroundUrl}
               onClick={() => {
                 setAddNoteMode(true);
-                setOpenPanel(null);
+                setPanel(null);
               }}
               className="text-xs"
             >
@@ -2642,7 +2634,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     setOpenNoteId(n.id);
                     setNoteDraft(n.text);
                     setNoteDraftIcon(n.icon);
-                    setOpenPanel(null);
+                    setPanel(null);
                   }}
                   className="w-full truncate rounded-sm px-1.5 py-1 text-left text-sm text-text-muted hover:bg-surface-2 hover:text-text"
                 >
@@ -2733,7 +2725,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 updateSelectedToken({ hp_current: e.target.value === "" ? null : Number(e.target.value) })
               }
               placeholder="PV atual"
-              className="flex-1 py-1.5 text-xs"
+              className="min-w-0 flex-1 py-1.5 text-xs"
             />
             <Input
               type="number"
@@ -2742,7 +2734,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 updateSelectedToken({ hp_max: e.target.value === "" ? null : Number(e.target.value) })
               }
               placeholder="PV máximo"
-              className="flex-1 py-1.5 text-xs"
+              className="min-w-0 flex-1 py-1.5 text-xs"
             />
           </div>
           <Select
@@ -2985,7 +2977,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openNote && (
-        <div className="absolute bottom-4 left-1/2 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+        <div className="absolute left-1/2 top-16 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
           <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
             Anotação
           </span>

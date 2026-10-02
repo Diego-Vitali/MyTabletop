@@ -70,18 +70,31 @@ export function GridLayer({
   );
 }
 
-/** Rounds x/y to the nearest grid cell center, if the grid is enabled and
- * snapping is on. Hex snapping uses the same nearest-cell-center logic via
- * axial rounding; square just rounds to the nearest cell. */
-export function snapToGrid(x: number, y: number, grid: GridConfig): { x: number; y: number } {
+/** Rounds x/y to the nearest grid snap point, if the grid is enabled and
+ * snapping is on. `sizePx` is the token's own on-map size: a token that
+ * spans an even number of cells (2×2, 4×4, a "grande"+ token) is centered
+ * on a grid-line INTERSECTION rather than a cell center, so its edges land
+ * on cell boundaries instead of being offset by half a cell — otherwise a
+ * big token visibly straddles its 2×2 block off-center every time it's
+ * dropped. An odd span (1×1, 3×3) still snaps to a cell center as before.
+ * Hex snapping is unaffected (always nearest hex center via axial
+ * rounding) — hex has no well-defined "intersection" equivalent here. */
+export function snapToGrid(
+  x: number,
+  y: number,
+  grid: GridConfig,
+  sizePx: number = grid.size,
+): { x: number; y: number } {
   if (!grid.enabled || !grid.snap_enabled) return { x, y };
 
   if (grid.type === "square") {
-    const cellX = Math.round((x - grid.offset_x) / grid.size);
-    const cellY = Math.round((y - grid.offset_y) / grid.size);
+    const cellsSpan = Math.max(1, Math.round(sizePx / grid.size));
+    const centerOffset = cellsSpan % 2 === 0 ? 0 : grid.size / 2;
+    const cellX = Math.round((x - grid.offset_x - centerOffset) / grid.size);
+    const cellY = Math.round((y - grid.offset_y - centerOffset) / grid.size);
     return {
-      x: grid.offset_x + cellX * grid.size + grid.size / 2,
-      y: grid.offset_y + cellY * grid.size + grid.size / 2,
+      x: grid.offset_x + cellX * grid.size + centerOffset,
+      y: grid.offset_y + cellY * grid.size + centerOffset,
     };
   }
 
