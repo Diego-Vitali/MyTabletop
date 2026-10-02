@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
-from app.models.scene import FogStroke, GridConfig, TokenDisplaySettings
+from app.models.scene import FogShape, GridConfig, TokenDisplaySettings
 
 if TYPE_CHECKING:
     from app.models.scene import Scene
@@ -20,7 +20,7 @@ class SceneUpdate(BaseModel):
 
 
 class SceneFogUpdate(BaseModel):
-    fog: list[FogStroke]
+    fog: list[FogShape]
 
 
 class ScenePublic(BaseModel):
@@ -32,7 +32,7 @@ class ScenePublic(BaseModel):
     is_active: bool
     grid: GridConfig
     token_settings: TokenDisplaySettings
-    fog: list[FogStroke]
+    fog: list[FogShape]
     dynamic_lighting_enabled: bool
     created_by: str
     created_at: datetime

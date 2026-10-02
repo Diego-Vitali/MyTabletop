@@ -17,6 +17,8 @@ class GridConfig(BaseModel):
     opacity: float = 0.5
     snap_enabled: bool = True
     unit_label: str = "1,5m"  # shown next to measured distances, e.g. "3 (1,5m)"
+    unit_meters: float = 1.5  # real-world meters one cell represents — the numeric scale behind unit_label,
+    # used to convert a token's light radius between meters (what the DM types) and px (what's stored/rendered)
 
 
 class TokenDisplaySettings(BaseModel):
@@ -32,13 +34,17 @@ class FogPoint(BaseModel):
     y: float
 
 
-class FogStroke(BaseModel):
-    """One brush stroke painted by the DM onto the fog-of-war layer. The
-    frontend sends the whole `Scene.fog` list back on every stroke (see
-    vtt_service.set_fog) rather than incremental diffs — simple and cheap at
-    the stroke counts a single session produces."""
+class FogShape(BaseModel):
+    """One shape painted by the DM onto the fog-of-war layer: a freehand
+    brush stroke, a box, or a circle. The frontend sends the whole
+    `Scene.fog` list back on every edit (see vtt_service.set_fog) rather than
+    incremental diffs — simple and cheap at the shape counts a single
+    session produces. `points` holds a polyline for "brush" (paired with
+    `radius` as the brush thickness), two opposite corners for "rect", or a
+    single center point for "circle" (paired with `radius`)."""
 
     id: str
+    kind: Literal["brush", "rect", "circle"] = "brush"
     points: list[FogPoint]
     radius: float = 50.0
     is_erasing: bool = False  # False = hides the area (paint fog), True = reveals it
@@ -52,7 +58,7 @@ class Scene(Document):
     is_active: bool = False
     grid: GridConfig = Field(default_factory=GridConfig)
     token_settings: TokenDisplaySettings = Field(default_factory=TokenDisplaySettings)
-    fog: list[FogStroke] = Field(default_factory=list)
+    fog: list[FogShape] = Field(default_factory=list)
     # Off by default so every existing/ordinary scene keeps working exactly
     # as before — see app/services/vision_service.py for what turning this
     # on actually changes (players stop receiving live token data outside

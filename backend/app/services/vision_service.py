@@ -20,28 +20,37 @@ async def _compute_visible(tabletop: Tabletop, scene_id: str) -> tuple[set[str],
     tokens = await Token.find(Token.tabletop_id == str(tabletop.id)).to_list()
     walls = await Wall.find(Wall.scene_id == scene_id, Wall.blocks_light == True).to_list()  # noqa: E712
     segments: list[Segment] = [((w.x1, w.y1), (w.x2, w.y2)) for w in walls]
-    player_ids = {m.user_id for m in tabletop.members if m.role != "dm"}
+    # Any token with "emits light" on counts as a vision source, regardless
+    # of who placed it — the DM routinely places tokens on a player's
+    # behalf, so gating on `created_by` (a prior approach) silently dropped
+    # exactly that common case and made dynamic lighting look broken.
     lights: list[tuple[Point, float]] = [
-        ((t.x, t.y), t.light_radius or 0.0)
-        for t in tokens
-        if t.emits_light and t.created_by in player_ids
+        ((t.x, t.y), t.light_radius or 0.0) for t in tokens if t.emits_light
     ]
 
     visible: set[str] = set()
     for t in tokens:
+        if t.hidden_from_players:
+            continue
         point = (t.x, t.y)
         if any(is_visible(point, light, radius, segments) for light, radius in lights):
             visible.add(str(t.id))
     return visible, {str(t.id): t for t in tokens}
 
 
-async def gated_token_broadcast(tabletop: Tabletop, message: dict) -> None:
+async def gated_token_broadcast(tabletop: Tabletop, message: dict, hidden_from_players: bool = False) -> None:
     """Every token_added/token_updated/token_deleted broadcast goes through
-    here instead of straight to `manager.broadcast`. When the active scene
-    doesn't have dynamic lighting on, behavior is unchanged (broadcast to
-    everyone). When it's on, the DM still gets the raw event unconditionally,
-    but players don't — recompute_and_broadcast below decides what (if
-    anything) they're told, based on actual line-of-sight."""
+    here instead of straight to `manager.broadcast`. A token the DM marked
+    `hidden_from_players` never reaches player sockets at all, regardless of
+    dynamic lighting. Otherwise: when the active scene doesn't have dynamic
+    lighting on, behavior is unchanged (broadcast to everyone); when it's
+    on, the DM still gets the raw event unconditionally, but players don't —
+    recompute_and_broadcast below decides what (if anything) they're told,
+    based on actual line-of-sight."""
+    if hidden_from_players:
+        await manager.send_to_dm(str(tabletop.id), message)
+        return
+
     scene = await Scene.find_one(Scene.tabletop_id == str(tabletop.id), Scene.is_active == True)  # noqa: E712
     if not scene or not scene.dynamic_lighting_enabled:
         await manager.broadcast(str(tabletop.id), message)

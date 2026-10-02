@@ -3,7 +3,7 @@ from fastapi import UploadFile
 from app.core.storage import save_image
 from app.core.ws_manager import manager
 from app.models.map_history import MapHistoryEntry, TokenSnapshot
-from app.models.scene import FogStroke, Scene
+from app.models.scene import FogShape, Scene
 from app.models.tabletop import Tabletop
 from app.models.token import Token
 from app.models.user import User
@@ -109,9 +109,9 @@ async def update_scene(scene: Scene, data: SceneUpdate) -> Scene:
     return scene
 
 
-async def set_fog(scene: Scene, fog: list[FogStroke]) -> Scene:
+async def set_fog(scene: Scene, fog: list[FogShape]) -> Scene:
     """Replaces the scene's whole fog-of-war stroke list. The frontend always
-    sends the full brush history back (simple and cheap — see FogStroke)."""
+    sends the full brush history back (simple and cheap — see FogShape)."""
     scene.fog = fog
     await scene.save()
 
