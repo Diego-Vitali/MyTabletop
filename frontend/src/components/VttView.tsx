@@ -33,7 +33,8 @@ import type {
   DrawingKind,
   DrawingPublic,
   EncounterPublic,
-  FogStroke,
+  FogShape,
+  FogShapeKind,
   FolderPublic,
   GridConfig,
   InitiativePublic,
@@ -50,12 +51,11 @@ import type {
 import { DEFAULT_GRID, DEFAULT_TOKEN_SETTINGS, NOTE_ICON_CHOICES, SIZE_CATEGORY_LABELS } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
 import { Badge, Button, Input, Select, ToolbarIconButton } from "@/components/ui";
-import { DirectoryPanel } from "@/components/vtt/DirectoryPanel";
+import { AssetDock } from "@/components/vtt/AssetDock";
 import { DrawingLayer, type PendingDrawing } from "@/components/vtt/DrawingLayer";
-import { FogLayer } from "@/components/vtt/FogLayer";
+import { DarknessLayer } from "@/components/vtt/DarknessLayer";
 import { GridLayer, snapToGrid } from "@/components/vtt/GridLayer";
 import { InitiativeTracker } from "@/components/vtt/InitiativeTracker";
-import { VisionLayer } from "@/components/vtt/VisionLayer";
 
 const NOTE_ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number }>> = {
   StickyNote,
@@ -700,13 +700,26 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
     }
   };
 
-  const commitFogStroke = async (points: Point[], isErasing: boolean) => {
-    if (!activeScene || points.length < 1) return;
+  /** Turns the raw [first, current] drag points into what gets stored, per
+   * fog shape: "rect" keeps both corners, "circle" keeps only the center
+   * plus a radius derived from the drag distance, "brush" keeps the whole
+   * accumulated polyline as-is. */
+  const buildFogShapePayload = (kind: FogShapeKind, pts: Point[]): { points: Point[]; radius: number } => {
+    if (kind === "circle" && pts.length >= 2) {
+      return { points: [pts[0]], radius: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) };
+    }
+    return { points: pts, radius: fogRadius };
+  };
+
+  const commitFogStroke = async (kind: FogShapeKind, pts: Point[], isErasing: boolean) => {
+    if (!activeScene || pts.length < 1) return;
+    const { points, radius } = buildFogShapePayload(kind, pts);
     fogStrokeCounterRef.current += 1;
-    const stroke: FogStroke = {
+    const stroke: FogShape = {
       id: `fog_${user?.id ?? "anon"}_${fogStrokeCounterRef.current}`,
+      kind,
       points,
-      radius: fogRadius,
+      radius,
       is_erasing: isErasing,
     };
     const nextFog = [...activeScene.fog, stroke];
@@ -813,8 +826,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       const rect = containerRef.current.getBoundingClientRect();
       const x = (e.clientX - rect.left - transform.x) / transform.scale;
       const y = (e.clientY - rect.top - transform.y) / transform.scale;
-      fogPtsRef.current.push({ x, y });
-      setPendingFog({ points: [...fogPtsRef.current], radius: fogRadius, isErasing: fogTool === "reveal" });
+      if (fogShape === "brush") {
+        fogPtsRef.current.push({ x, y });
+      } else {
+        fogPtsRef.current = [fogPtsRef.current[0], { x, y }];
+      }
+      const { points, radius } = buildFogShapePayload(fogShape, fogPtsRef.current);
+      setPendingFog({ kind: fogShape, points, radius, isErasing: fogTool === "reveal" });
       return;
     }
     if (drawingPtsRef.current && containerRef.current && drawTool && drawTool !== "erase" && drawTool !== "text") {
@@ -1619,18 +1637,64 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               </div>
             );
           })}
-          {bgSize && (fog.length > 0 || fogTool) && (
-            <FogLayer
+          {bgSize && (fog.length > 0 || fogTool || dynamicLightingOn) && (
+            <DarknessLayer
               fog={fog}
               pending={pendingFog}
+              dynamicLightingEnabled={dynamicLightingOn}
+              lights={lights}
+              walls={walls}
               width={bgSize.width}
               height={bgSize.height}
-              interactive={!!fogTool}
+              interactive={fogTool === "hide" || fogTool === "reveal"}
               dmView={iAmDm}
             />
           )}
-          {bgSize && dynamicLightingOn && (
-            <VisionLayer lights={lights} walls={walls} width={bgSize.width} height={bgSize.height} />
+          {iAmDm && fogTool === "erase" && (
+            <svg className="pointer-events-none absolute left-0 top-0 overflow-visible" width={1} height={1}>
+              {fog.map((f) => {
+                const common = {
+                  fill: "var(--color-accent)",
+                  fillOpacity: 0.25,
+                  stroke: "var(--color-accent)",
+                  strokeWidth: 2,
+                  style: { pointerEvents: "all" as const, cursor: "pointer" },
+                  onPointerDown: (e: React.PointerEvent) => {
+                    e.stopPropagation();
+                    deleteFogShape(f.id);
+                  },
+                };
+                if (f.kind === "rect" && f.points.length >= 2) {
+                  const [a, b] = f.points;
+                  const x = Math.min(a.x, b.x);
+                  const y = Math.min(a.y, b.y);
+                  return (
+                    <rect
+                      key={f.id}
+                      {...common}
+                      x={x}
+                      y={y}
+                      width={Math.abs(b.x - a.x)}
+                      height={Math.abs(b.y - a.y)}
+                    />
+                  );
+                }
+                if (f.kind === "circle") {
+                  return <circle key={f.id} {...common} cx={f.points[0].x} cy={f.points[0].y} r={f.radius} />;
+                }
+                return (
+                  <polyline
+                    key={f.id}
+                    {...common}
+                    points={f.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                    fill="none"
+                    strokeWidth={f.radius * 2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                );
+              })}
+            </svg>
           )}
         </div>
         {!backgroundUrl && (
@@ -1843,17 +1907,31 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               onChange={(e) => updateGrid({ snap_enabled: e.target.checked })}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            Unidade de medida
-            <Input
-              value={grid.unit_label}
-              onChange={(e) => updateGrid({ unit_label: e.target.value })}
-              placeholder="ex.: 1,5m"
-              className="py-1.5 text-xs"
-            />
-          </label>
+          <div className="flex gap-2">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-text-muted">
+              Unidade de medida
+              <Input
+                value={grid.unit_label}
+                onChange={(e) => updateGrid({ unit_label: e.target.value })}
+                placeholder="ex.: 1,5m"
+                className="min-w-0 py-1.5 text-xs"
+              />
+            </label>
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-text-muted">
+              Metros por quadrado
+              <Input
+                type="number"
+                min={0.1}
+                step={0.1}
+                value={grid.unit_meters}
+                onChange={(e) => updateGrid({ unit_meters: Number(e.target.value) || grid.unit_meters })}
+                className="min-w-0 py-1.5 text-xs"
+              />
+            </label>
+          </div>
           <p className="text-[10px] text-text-faint">
-            Shift + arraste no mapa para medir distância.
+            Shift + arraste no mapa para medir distância · usado também para converter o raio de luz dos
+            tokens (em metros) para o mapa.
           </p>
         </div>
       )}
@@ -1958,22 +2036,75 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             >
               Revelar
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDrawTool(null);
+                setWallTool(null);
+                setFogTool((prev) => (prev === "erase" ? null : "erase"));
+              }}
+              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+                fogTool === "erase"
+                  ? "border-accent bg-accent-soft text-accent-strong"
+                  : "border-border-soft text-text-muted hover:text-text"
+              }`}
+            >
+              Apagar forma
+            </button>
           </div>
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            Raio do pincel
-            <input
-              type="range"
-              min={10}
-              max={200}
-              value={fogRadius}
-              onChange={(e) => setFogRadius(Number(e.target.value))}
-            />
-          </label>
+          {fogTool !== "erase" && (
+          <>
+          <div className="flex gap-1.5">
+            {(
+              [
+                ["brush", PenLine, "Pincel"],
+                ["rect", SquareIcon, "Caixa"],
+                ["circle", CircleIcon, "Círculo"],
+              ] as [FogShapeKind, React.ComponentType<{ size?: number }>, string][]
+            ).map(([shapeValue, Icon, label]) => (
+              <button
+                key={shapeValue}
+                type="button"
+                title={label}
+                onClick={() => setFogShape(shapeValue)}
+                className={`flex h-8 flex-1 items-center justify-center rounded-sm border transition ${
+                  fogShape === shapeValue
+                    ? "border-accent bg-accent-soft text-accent-strong"
+                    : "border-border-soft text-text-muted hover:text-text"
+                }`}
+              >
+                <Icon size={15} />
+              </button>
+            ))}
+          </div>
+          {fogShape === "brush" && (
+            <label className="flex flex-col gap-1 text-xs text-text-muted">
+              Raio do pincel
+              <input
+                type="range"
+                min={10}
+                max={200}
+                value={fogRadius}
+                onChange={(e) => setFogRadius(Number(e.target.value))}
+              />
+            </label>
+          )}
+          </>
+          )}
           <Button type="button" variant="secondary" className="text-xs" onClick={clearFog}>
             Limpar toda a névoa
           </Button>
-          {fogTool && (
-            <p className="text-[10px] text-text-faint">Arraste no mapa para pintar.</p>
+          {fogTool && fogTool !== "erase" && (
+            <p className="text-[10px] text-text-faint">
+              {fogShape === "brush"
+                ? "Arraste no mapa para pintar."
+                : "Arraste no mapa para desenhar a forma."}
+            </p>
+          )}
+          {fogTool === "erase" && (
+            <p className="text-[10px] text-text-faint">
+              Clique numa forma de névoa no mapa para apagar só ela.
+            </p>
           )}
         </div>
       )}

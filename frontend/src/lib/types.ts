@@ -116,6 +116,7 @@ export interface GridConfig {
   opacity: number;
   snap_enabled: boolean;
   unit_label: string;
+  unit_meters: number;
 }
 
 export const DEFAULT_GRID: GridConfig = {
@@ -127,6 +128,7 @@ export const DEFAULT_GRID: GridConfig = {
   opacity: 0.5,
   snap_enabled: true,
   unit_label: "1,5m",
+  unit_meters: 1.5,
 };
 
 export interface TokenDisplaySettings {
@@ -141,8 +143,11 @@ export const DEFAULT_TOKEN_SETTINGS: TokenDisplaySettings = {
   show_instance_badges: true,
 };
 
-export interface FogStroke {
+export type FogShapeKind = "brush" | "rect" | "circle";
+
+export interface FogShape {
   id: string;
+  kind: FogShapeKind;
   points: Point[];
   radius: number;
   is_erasing: boolean;
@@ -157,7 +162,7 @@ export interface ScenePublic {
   is_active: boolean;
   grid: GridConfig;
   token_settings: TokenDisplaySettings;
-  fog: FogStroke[];
+  fog: FogShape[];
   dynamic_lighting_enabled: boolean;
   created_by: string;
   created_at: string;
