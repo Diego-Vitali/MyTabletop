@@ -2,11 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { UserPlus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
-import { Button, Card, FieldError, Input } from "@/components/ui";
+import { Button, ChevronLink, FieldError, TextField } from "@/components/ui";
+import { AccountShell } from "@/components/AccountShell";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -32,48 +31,51 @@ export default function RegisterPage() {
   };
 
   return (
-    <Card className="mx-auto flex max-w-sm flex-col gap-5">
-      <h1 className="text-xl font-bold tracking-tight">Criar conta</h1>
+    <AccountShell
+      current="register"
+      title="Crie sua conta MyTabletop."
+      subtitle="Uma conta é tudo de que você precisa para mestrar ou jogar."
+    >
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <Input
-          placeholder="Usuário"
+        <TextField
+          label="Nome de usuário"
+          autoComplete="username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           minLength={3}
           maxLength={32}
           required
         />
-        <Input
-          placeholder="Email"
+        <TextField
+          label="E-mail"
           type="email"
+          autoComplete="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        <Input
-          placeholder="Senha (mín. 8 caracteres)"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          minLength={8}
-          required
-        />
+        <div className="flex flex-col gap-2">
+          <TextField
+            label="Senha"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+          <p className="px-1 text-xs text-text-muted">Use no mínimo 8 caracteres.</p>
+        </div>
         <FieldError>{error}</FieldError>
-        <Button
-          type="submit"
-          disabled={submitting}
-          className="flex w-full items-center justify-center gap-1.5"
-        >
-          <UserPlus size={16} />
-          {submitting ? "Criando..." : "Criar conta"}
+        <Button type="submit" size="lg" disabled={submitting} className="mt-4 w-full">
+          {submitting ? "Criando conta..." : "Continuar"}
         </Button>
       </form>
-      <p className="text-sm text-text-muted">
-        Já tem conta?{" "}
-        <Link href="/login" className="font-semibold text-accent hover:underline">
-          Entrar
-        </Link>
-      </p>
-    </Card>
+
+      <div className="mt-12 flex flex-col items-center gap-2 border-t border-border-soft pt-8 text-center text-sm">
+        <span className="text-text-muted">Já tem uma conta?</span>
+        <ChevronLink href="/login">Inicie sessão</ChevronLink>
+      </div>
+    </AccountShell>
   );
 }

@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { api } from "./api";
 import type { UserPublic } from "./types";
 
@@ -18,12 +25,27 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const noopSubscribe = () => () => {};
+
+/** false no servidor e durante a hidratação, true depois — o token vem do
+ * localStorage (só existe no cliente), então até a hidratação terminar o
+ * contexto se apresenta como "carregando" nos dois lados, evitando HTML
+ * diferente entre servidor e cliente. */
+function useHydrated() {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() =>
     typeof window === "undefined" ? null : localStorage.getItem(TOKEN_STORAGE_KEY),
   );
   const [user, setUser] = useState<UserPublic | null>(null);
   const [loading, setLoading] = useState(() => token !== null);
+  const hydrated = useHydrated();
 
   const loadUser = async (tok: string) => {
     const me = await api.get<UserPublic>("/users/me", tok);
@@ -88,7 +110,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ token, user, loading, login, register, logout, refreshUser }}
+      value={{
+        token: hydrated ? token : null,
+        user,
+        loading: !hydrated || loading,
+        login,
+        register,
+        logout,
+        refreshUser,
+      }}
     >
       {children}
     </AuthContext.Provider>

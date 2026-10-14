@@ -50,7 +50,7 @@ import type {
 } from "@/lib/types";
 import { DEFAULT_GRID, DEFAULT_TOKEN_SETTINGS, NOTE_ICON_CHOICES, SIZE_CATEGORY_LABELS } from "@/lib/types";
 import { RequireAuth } from "@/components/RequireAuth";
-import { Badge, Button, Input, Select, ToolbarIconButton } from "@/components/ui";
+import { Badge, Button, Input, SegmentedControl, Select, Textarea, ToolbarIconButton } from "@/components/ui";
 import { AssetDock } from "@/components/vtt/AssetDock";
 import { DrawingLayer, type PendingDrawing } from "@/components/vtt/DrawingLayer";
 import { DarknessLayer } from "@/components/vtt/DarknessLayer";
@@ -164,7 +164,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const [noteDraftIcon, setNoteDraftIcon] = useState("StickyNote");
 
   const [drawTool, setDrawTool] = useState<DrawTool>(null);
-  const [drawColor, setDrawColor] = useState("#c1454e");
+  const [drawColor, setDrawColor] = useState("#0071e3");
   const [drawWidth, setDrawWidth] = useState(3);
   const [pendingDrawing, setPendingDrawing] = useState<PendingDrawing | null>(null);
   const drawingPtsRef = useRef<Point[] | null>(null);
@@ -1613,14 +1613,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
 
   if (loading) {
     return (
-      <div className="flex h-dvh w-dvw items-center justify-center bg-bg text-text-muted">
+      <div className="flex h-dvh w-dvw items-center justify-center bg-bg-alt text-text-muted">
         Carregando...
       </div>
     );
   }
   if (loadError) {
     return (
-      <div className="flex h-dvh w-dvw items-center justify-center bg-bg text-danger">
+      <div className="flex h-dvh w-dvw items-center justify-center bg-bg-alt text-danger">
         {loadError}
       </div>
     );
@@ -1630,24 +1630,20 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
   const openNote = openNoteId ? notes.find((n) => n.id === openNoteId) ?? null : null;
 
   const assetTabSwitch = iAmDm ? (
-    <div className="flex shrink-0 overflow-hidden rounded-sm border border-border-soft">
-      {(["tokens", "scenes"] as const).map((tabValue) => (
-        <button
-          key={tabValue}
-          type="button"
-          onClick={() => setAssetTab(tabValue)}
-          className={`px-2.5 py-1.5 text-xs font-bold uppercase transition ${
-            assetTab === tabValue ? "bg-accent text-on-accent" : "bg-surface-2 text-text-muted hover:text-text"
-          }`}
-        >
-          {tabValue === "tokens" ? "Tokens" : "Cenas"}
-        </button>
-      ))}
-    </div>
+    <SegmentedControl
+      size="sm"
+      value={assetTab}
+      onChange={setAssetTab}
+      className="shrink-0"
+      options={[
+        { value: "tokens", label: "Tokens" },
+        { value: "scenes", label: "Cenas" },
+      ]}
+    />
   ) : null;
 
   return (
-    <div className="relative h-dvh w-dvw overflow-hidden bg-bg">
+    <div className="relative h-dvh w-dvw overflow-hidden bg-surface">
       <div
         ref={containerRef}
         data-drop-target="__canvas__"
@@ -1868,20 +1864,20 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   }`}
                 />
                 {badge && (
-                  <span className="pointer-events-none absolute -left-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-surface px-1 font-mono text-[9px] font-bold text-text shadow">
+                  <span className="pointer-events-none absolute -left-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-surface px-1 text-[10px] font-semibold tabular-nums text-text shadow">
                     {badge}
                   </span>
                 )}
                 {hpPct !== null && (
                   <div className="absolute -bottom-1.5 left-0 h-1.5 w-full overflow-hidden rounded-full bg-surface/80">
                     <div
-                      className={`h-full ${hpPct > 50 ? "bg-accent" : hpPct > 20 ? "bg-rare" : "bg-danger"}`}
+                      className={`h-full ${hpPct > 50 ? "bg-ok" : hpPct > 20 ? "bg-warn" : "bg-danger"}`}
                       style={{ width: `${hpPct}%` }}
                     />
                   </div>
                 )}
                 {tokenSettings.show_nameplates && t.name && (
-                  <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-surface/90 px-1.5 py-0.5 font-mono text-[9px] text-text-muted">
+                  <span className="pointer-events-none absolute left-1/2 top-full mt-1 -translate-x-1/2 whitespace-nowrap rounded-full bg-surface/90 px-2 py-0.5 text-[10px] font-medium text-text shadow-sm backdrop-blur">
                     {t.name}
                   </span>
                 )}
@@ -1901,7 +1897,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     onPointerDown={(e) => onRotateHandlePointerDown(e, t)}
                     onPointerMove={onRotateHandlePointerMove}
                     onPointerUp={onRotateHandlePointerUp}
-                    className="absolute left-1/2 -top-4 h-3 w-3 -translate-x-1/2 cursor-grab rounded-full border-2 border-bg bg-accent-strong"
+                    className="absolute left-1/2 -top-4 h-3 w-3 -translate-x-1/2 cursor-grab rounded-full border-2 border-text bg-accent-strong"
                     style={{ touchAction: "none" }}
                     title="Arraste para rotacionar"
                   />
@@ -1911,7 +1907,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     onPointerDown={(e) => onResizeHandlePointerDown(e, t)}
                     onPointerMove={onResizeHandlePointerMove}
                     onPointerUp={onResizeHandlePointerUp}
-                    className="absolute -bottom-1 -right-1 h-3.5 w-3.5 cursor-nwse-resize rounded-full border-2 border-bg bg-accent"
+                    className="absolute -bottom-1 -right-1 h-3.5 w-3.5 cursor-nwse-resize rounded-full border-2 border-text bg-accent"
                     style={{ touchAction: "none" }}
                     title="Arraste para redimensionar · F para flipar · Ctrl+D duplica · Del remove"
                   />
@@ -1946,7 +1942,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     setNoteDraftIcon(n.icon);
                     setPanel(null);
                   }}
-                  className="flex h-full w-full items-center justify-center rounded-full border-2 border-bg bg-accent text-on-accent shadow-lg"
+                  className="flex h-full w-full items-center justify-center rounded-full border-2 border-text bg-accent text-on-accent shadow-lg"
                   title={n.text}
                 >
                   <NoteIcon size={13} />
@@ -2015,18 +2011,18 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           )}
         </div>
         {!backgroundUrl && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-text-muted">
+          <div className="type-eyebrow pointer-events-none absolute inset-0 flex items-center justify-center text-text-faint">
             Nenhuma cena definida ainda.
           </div>
         )}
         {addNoteMode && (
-          <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full border border-border-soft bg-surface/90 px-3 py-1.5 text-xs text-text-muted backdrop-blur">
+          <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full panel-float px-4 py-2 text-xs text-text">
             Clique no mapa para posicionar a anotação
           </div>
         )}
         {ruler && (
           <div
-            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-border-soft bg-surface/95 px-2 py-1 font-mono text-[10px] text-text backdrop-blur"
+            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full panel-float px-2.5 py-1 text-xs font-semibold tabular-nums text-text"
             style={{
               left: transform.x + ((ruler.startX + ruler.endX) / 2) * transform.scale,
               top: transform.y + ((ruler.startY + ruler.endY) / 2) * transform.scale - 16,
@@ -2038,15 +2034,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       </div>
 
       {/* Top-left toolbar: navigation + directories */}
-      <div className="absolute left-4 top-4 flex items-center gap-1 rounded-md border border-border-soft bg-surface/90 p-1 backdrop-blur">
+      <div className="no-scrollbar absolute left-4 top-4 flex max-w-[calc(100vw-2rem)] items-center gap-0.5 overflow-x-auto rounded-full panel-float p-1">
         <Link
           href={`/tabletops/${tabletopId}`}
           title="Sair do VTT"
-          className="flex h-9 w-9 items-center justify-center rounded-sm text-text-muted transition hover:bg-surface-2 hover:text-text"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-text transition hover:bg-hairline"
         >
           <DoorOpen size={18} />
         </Link>
-        <div className="mx-0.5 h-5 w-px bg-border-soft" />
+        <div className="mx-1 h-5 w-px shrink-0 bg-hairline" />
         <ToolbarIconButton
           title="Membros"
           active={openPanel === "members"}
@@ -2135,8 +2131,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       </div>
 
       {openPanel === "members" && (
-        <div className="absolute left-4 top-16 w-64 rounded-md border border-border-soft bg-surface/95 p-3 backdrop-blur">
-          <span className="mb-2 block font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 top-16 w-64 rounded-md panel-float p-3">
+          <span className="mb-2 block text-[15px] font-semibold text-text">
             Membros
           </span>
           <ul className="flex flex-col gap-1.5">
@@ -2151,14 +2147,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openPanel === "grid" && activeScene && (
-        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md panel-float p-4">
+          <span className="text-[15px] font-semibold text-text">
             Grade
           </span>
-          <label className="flex items-center justify-between text-sm">
+          <label className="flex items-center justify-between gap-3 text-sm">
             Ativada
             <input
               type="checkbox"
+              role="switch"
+              className="switch"
               checked={grid.enabled}
               onChange={(e) => updateGrid({ enabled: e.target.checked })}
             />
@@ -2168,7 +2166,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             <Select
               value={grid.type}
               onChange={(e) => updateGrid({ type: e.target.value as GridConfig["type"] })}
-              className="py-1.5 text-xs"
+              dense
             >
               <option value="square">Quadrada</option>
               <option value="hex">Hexagonal</option>
@@ -2187,11 +2185,11 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 const cols = Math.max(1, Number(e.target.value) || 1);
                 updateGrid({ size: bgSize.width / cols, offset_x: 0, offset_y: 0 });
               }}
-              className="py-1.5 text-xs"
+              dense
             />
           </label>
           {bgSize && (
-            <p className="text-[10px] text-text-faint">
+            <p className="text-xs leading-snug text-text-faint">
               Célula de {grid.size.toFixed(1)}px · {Math.round(bgSize.height / grid.size)} linhas na altura da
               imagem.
             </p>
@@ -2207,10 +2205,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               onChange={(e) => updateGrid({ opacity: Number(e.target.value) })}
             />
           </label>
-          <label className="flex items-center justify-between text-sm">
+          <label className="flex items-center justify-between gap-3 text-sm">
             Encaixar tokens na grade
             <input
               type="checkbox"
+              role="switch"
+              className="switch"
               checked={grid.snap_enabled}
               onChange={(e) => updateGrid({ snap_enabled: e.target.checked })}
             />
@@ -2222,7 +2222,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 value={grid.unit_label}
                 onChange={(e) => updateGrid({ unit_label: e.target.value })}
                 placeholder="ex.: 1,5m"
-                className="min-w-0 py-1.5 text-xs"
+                dense
+                className="min-w-0"
               />
             </label>
             <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-text-muted">
@@ -2233,11 +2234,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 step={0.1}
                 value={grid.unit_meters}
                 onChange={(e) => updateGrid({ unit_meters: Number(e.target.value) || grid.unit_meters })}
-                className="min-w-0 py-1.5 text-xs"
+                dense
+                className="min-w-0"
               />
             </label>
           </div>
-          <p className="text-[10px] text-text-faint">
+          <p className="text-xs leading-snug text-text-faint">
             Shift + arraste no mapa para medir distância · usado também para converter o raio de luz dos
             tokens (em metros) para o mapa.
           </p>
@@ -2245,8 +2247,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openPanel === "draw" && activeScene && (
-        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md panel-float p-4">
+          <span className="text-[15px] font-semibold text-text">
             Desenho
           </span>
           <div className="grid grid-cols-6 gap-1">
@@ -2269,23 +2271,23 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   setWallTool(null);
                   setDrawTool((prev) => (prev === toolValue ? null : toolValue));
                 }}
-                className={`flex h-8 w-8 items-center justify-center rounded-sm border transition ${
+                className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-sm border transition ${
                   drawTool === toolValue
-                    ? "border-accent bg-accent-soft text-accent-strong"
-                    : "border-border-soft text-text-muted hover:text-text"
+                    ? "border-accent text-accent-strong ring-1 ring-accent"
+                    : "border-border text-text hover:border-text-faint"
                 }`}
               >
                 <Icon size={15} />
               </button>
             ))}
           </div>
-          <label className="flex items-center justify-between text-xs text-text-muted">
+          <label className="flex items-center justify-between gap-3 text-sm text-text">
             Cor
             <input
               type="color"
               value={drawColor}
               onChange={(e) => setDrawColor(e.target.value)}
-              className="h-7 w-12 rounded-sm border border-border-soft bg-transparent"
+              className="h-8 w-12 cursor-pointer rounded-sm border border-border bg-transparent"
             />
           </label>
           <label className="flex flex-col gap-1 text-xs text-text-muted">
@@ -2299,7 +2301,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             />
           </label>
           {drawTool && (
-            <p className="text-[10px] text-text-faint">
+            <p className="text-xs leading-snug text-text-faint">
               {drawTool === "erase"
                 ? "Clique num desenho no mapa para apagá-lo."
                 : "Desenhe no mapa. Clique na ferramenta de novo para desativar."}
@@ -2309,8 +2311,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openPanel === "fog" && activeScene && (
-        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md panel-float p-4">
+          <span className="text-[15px] font-semibold text-text">
             Névoa de guerra
           </span>
           <div className="flex gap-2">
@@ -2321,10 +2323,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 setWallTool(null);
                 setFogTool((prev) => (prev === "hide" ? null : "hide"));
               }}
-              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+              className={`flex-1 cursor-pointer rounded-sm border px-2 py-1.5 text-xs font-medium transition ${
                 fogTool === "hide"
-                  ? "border-accent bg-accent-soft text-accent-strong"
-                  : "border-border-soft text-text-muted hover:text-text"
+                  ? "border-accent text-accent-strong ring-1 ring-accent"
+                  : "border-border text-text hover:border-text-faint"
               }`}
             >
               Esconder
@@ -2336,10 +2338,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 setWallTool(null);
                 setFogTool((prev) => (prev === "reveal" ? null : "reveal"));
               }}
-              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+              className={`flex-1 cursor-pointer rounded-sm border px-2 py-1.5 text-xs font-medium transition ${
                 fogTool === "reveal"
-                  ? "border-accent bg-accent-soft text-accent-strong"
-                  : "border-border-soft text-text-muted hover:text-text"
+                  ? "border-accent text-accent-strong ring-1 ring-accent"
+                  : "border-border text-text hover:border-text-faint"
               }`}
             >
               Revelar
@@ -2351,10 +2353,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 setWallTool(null);
                 setFogTool((prev) => (prev === "erase" ? null : "erase"));
               }}
-              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+              className={`flex-1 cursor-pointer rounded-sm border px-2 py-1.5 text-xs font-medium transition ${
                 fogTool === "erase"
-                  ? "border-accent bg-accent-soft text-accent-strong"
-                  : "border-border-soft text-text-muted hover:text-text"
+                  ? "border-accent text-accent-strong ring-1 ring-accent"
+                  : "border-border text-text hover:border-text-faint"
               }`}
             >
               Apagar forma
@@ -2375,10 +2377,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 type="button"
                 title={label}
                 onClick={() => setFogShape(shapeValue)}
-                className={`flex h-8 flex-1 items-center justify-center rounded-sm border transition ${
+                className={`flex h-8 flex-1 cursor-pointer items-center justify-center rounded-sm border transition ${
                   fogShape === shapeValue
-                    ? "border-accent bg-accent-soft text-accent-strong"
-                    : "border-border-soft text-text-muted hover:text-text"
+                    ? "border-accent text-accent-strong ring-1 ring-accent"
+                    : "border-border text-text hover:border-text-faint"
                 }`}
               >
                 <Icon size={15} />
@@ -2399,18 +2401,18 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
           )}
           </>
           )}
-          <Button type="button" variant="secondary" className="text-xs" onClick={clearFog}>
+          <Button type="button" variant="secondary" size="sm" onClick={clearFog}>
             Limpar toda a névoa
           </Button>
           {fogTool && fogTool !== "erase" && (
-            <p className="text-[10px] text-text-faint">
+            <p className="text-xs leading-snug text-text-faint">
               {fogShape === "brush"
                 ? "Arraste no mapa para pintar."
                 : "Arraste no mapa para desenhar a forma."}
             </p>
           )}
           {fogTool === "erase" && (
-            <p className="text-[10px] text-text-faint">
+            <p className="text-xs leading-snug text-text-faint">
               Clique numa forma de névoa no mapa para apagar só ela.
             </p>
           )}
@@ -2418,19 +2420,21 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openPanel === "walls" && activeScene && (
-        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 top-16 flex w-72 flex-col gap-3 rounded-md panel-float p-4">
+          <span className="text-[15px] font-semibold text-text">
             Iluminação dinâmica
           </span>
-          <label className="flex items-center justify-between text-sm">
+          <label className="flex items-center justify-between gap-3 text-sm">
             Ativada nesta cena
             <input
               type="checkbox"
+              role="switch"
+              className="switch"
               checked={activeScene.dynamic_lighting_enabled}
               onChange={(e) => toggleDynamicLighting(e.target.checked)}
             />
           </label>
-          <p className="text-[10px] text-text-faint">
+          <p className="text-xs leading-snug text-text-faint">
             Quando ativa, jogadores só recebem tokens dentro da luz de um token de jogador que emite luz
             (aba &ldquo;Token&rdquo; ao selecionar um token) e com linha de visão livre de paredes.
           </p>
@@ -2442,10 +2446,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 setFogTool(null);
                 setWallTool((prev) => (prev === "draw" ? null : "draw"));
               }}
-              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+              className={`flex-1 cursor-pointer rounded-sm border px-2 py-1.5 text-xs font-medium transition ${
                 wallTool === "draw"
-                  ? "border-accent bg-accent-soft text-accent-strong"
-                  : "border-border-soft text-text-muted hover:text-text"
+                  ? "border-accent text-accent-strong ring-1 ring-accent"
+                  : "border-border text-text hover:border-text-faint"
               }`}
             >
               Desenhar parede
@@ -2457,10 +2461,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 setFogTool(null);
                 setWallTool((prev) => (prev === "erase" ? null : "erase"));
               }}
-              className={`flex-1 rounded-sm border px-2 py-1.5 text-xs font-bold uppercase transition ${
+              className={`flex-1 cursor-pointer rounded-sm border px-2 py-1.5 text-xs font-medium transition ${
                 wallTool === "erase"
-                  ? "border-accent bg-accent-soft text-accent-strong"
-                  : "border-border-soft text-text-muted hover:text-text"
+                  ? "border-accent text-accent-strong ring-1 ring-accent"
+                  : "border-border text-text hover:border-text-faint"
               }`}
             >
               Apagar
@@ -2480,10 +2484,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   type="button"
                   title={label}
                   onClick={() => setWallShape(shapeValue)}
-                  className={`flex h-8 flex-1 items-center justify-center rounded-sm border transition ${
+                  className={`flex h-8 flex-1 cursor-pointer items-center justify-center rounded-sm border transition ${
                     wallShape === shapeValue
-                      ? "border-accent bg-accent-soft text-accent-strong"
-                      : "border-border-soft text-text-muted hover:text-text"
+                      ? "border-accent text-accent-strong ring-1 ring-accent"
+                      : "border-border text-text hover:border-text-faint"
                   }`}
                 >
                   <Icon size={15} />
@@ -2492,7 +2496,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             </div>
           )}
           {wallTool && (
-            <p className="text-[10px] text-text-faint">
+            <p className="text-xs leading-snug text-text-faint">
               {wallTool === "draw"
                 ? wallShape === "circle"
                   ? "Clique no centro e arraste até o raio desejado."
@@ -2518,20 +2522,20 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openPanel === "encounters" && (
-        <div className="absolute left-4 top-16 flex max-h-[40vh] w-80 flex-col gap-2 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 top-16 flex max-h-[40vh] w-80 flex-col gap-2 overflow-y-auto rounded-md panel-float p-4">
+            <span className="text-[15px] font-semibold text-text">
               Encontros
             </span>
             <ul className="flex flex-col gap-1">
               {encounters.map((e) => (
                 <li key={e.id} className="flex items-center gap-2 text-sm">
                   <span className="min-w-0 flex-1 truncate">{e.name}</span>
-                  <span className="shrink-0 text-[10px] text-text-faint">{e.members.length}</span>
+                  <span className="shrink-0 text-xs leading-snug text-text-faint">{e.members.length}</span>
                   <button
                     type="button"
                     onClick={() => spawnEncounter(e)}
                     disabled={!backgroundUrl}
-                    className="shrink-0 text-[10px] font-bold uppercase text-accent hover:text-accent-strong disabled:opacity-40"
+                    className="shrink-0 cursor-pointer text-xs text-accent-strong hover:underline disabled:opacity-40"
                   >
                     Spawn
                   </button>
@@ -2539,7 +2543,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     <button
                       type="button"
                       onClick={() => deleteEncounterHandler(e)}
-                      className="shrink-0 text-text-faint transition hover:text-danger"
+                      className="shrink-0 cursor-pointer text-text-faint transition hover:text-danger"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -2557,11 +2561,11 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   value={encounterName}
                   onChange={(e) => setEncounterName(e.target.value)}
                   placeholder="Nome do encontro"
-                  className="py-1.5 text-xs"
+                  dense
                 />
                 <div className="flex max-h-32 flex-col gap-1 overflow-y-auto">
                   {templates.map((t) => (
-                    <label key={t.id} className="flex items-center gap-2 text-xs text-text-muted">
+                    <label key={t.id} className="flex cursor-pointer items-center gap-2 text-sm text-text">
                       <input
                         type="checkbox"
                         checked={encounterTemplateIds.has(t.id)}
@@ -2583,12 +2587,12 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   <Button
                     type="button"
                     variant="ghost"
-                    className="text-xs"
+                    size="sm"
                     onClick={() => setShowEncounterForm(false)}
                   >
                     Cancelar
                   </Button>
-                  <Button type="button" className="text-xs" onClick={createEncounter}>
+                  <Button type="button" size="sm" onClick={createEncounter}>
                     Salvar
                   </Button>
                 </div>
@@ -2597,7 +2601,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               <button
                 type="button"
                 onClick={() => setShowEncounterForm(true)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-text-muted transition hover:text-text"
+                className="flex cursor-pointer items-center gap-1.5 text-sm text-accent-strong transition hover:underline"
               >
                 <Plus size={14} />
                 Novo encontro
@@ -2607,8 +2611,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openPanel === "notes" && (
-        <div className="absolute left-4 top-16 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 top-16 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-md panel-float p-4">
+          <span className="text-[15px] font-semibold text-text">
             Anotações
           </span>
           {iAmDm && (
@@ -2620,7 +2624,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 setAddNoteMode(true);
                 setPanel(null);
               }}
-              className="text-xs"
+              size="sm"
             >
               {backgroundUrl ? "Nova anotação" : "Defina uma cena antes"}
             </Button>
@@ -2636,7 +2640,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                     setNoteDraftIcon(n.icon);
                     setPanel(null);
                   }}
-                  className="w-full truncate rounded-sm px-1.5 py-1 text-left text-sm text-text-muted hover:bg-surface-2 hover:text-text"
+                  className="w-full cursor-pointer truncate rounded-sm px-2.5 py-1.5 text-left text-sm text-text hover:bg-hairline"
                 >
                   {n.text}
                 </button>
@@ -2648,8 +2652,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openPanel === "history" && (
-        <div className="absolute left-4 top-16 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 top-16 flex max-h-[70vh] w-72 flex-col gap-3 overflow-y-auto rounded-md panel-float p-4">
+          <span className="text-[15px] font-semibold text-text">
             Histórico de mapas
           </span>
           {historyLoading && <p className="text-xs text-text-muted">Carregando...</p>}
@@ -2667,7 +2671,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 alt="Mapa anterior"
                 className="h-24 w-full rounded-sm object-cover"
               />
-              <span className="font-mono text-[10px] text-text-faint">
+              <span className="text-xs tabular-nums text-text-faint">
                 {new Date(entry.created_at).toLocaleString("pt-BR")} · {entry.tokens.length}{" "}
                 {entry.tokens.length === 1 ? "token" : "tokens"}
               </span>
@@ -2677,15 +2681,15 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {selectedToken && canEditToken(selectedToken) && (
-        <div className="absolute right-4 top-16 flex max-h-[70vh] w-80 flex-col gap-2 overflow-x-hidden overflow-y-auto rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+        <div className="absolute right-4 top-16 flex max-h-[70vh] w-80 flex-col gap-2 overflow-x-hidden overflow-y-auto rounded-md panel-float p-4">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            <span className="text-[15px] font-semibold text-text">
               Token
             </span>
             <div className="flex gap-2">
               <button
                 type="button"
-                className="text-[10px] font-bold uppercase text-accent hover:text-accent-strong"
+                className="cursor-pointer text-xs text-accent-strong hover:underline"
                 onClick={async () => {
                   try {
                     const created = await api.post<TokenPublic>(
@@ -2704,7 +2708,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               </button>
               <button
                 type="button"
-                className="text-[10px] font-bold uppercase text-danger hover:text-danger/80"
+                className="cursor-pointer text-xs text-danger hover:underline"
                 onClick={() => deleteToken(selectedToken)}
               >
                 Remover
@@ -2715,7 +2719,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             value={selectedToken.name ?? ""}
             onChange={(e) => updateSelectedToken({ name: e.target.value || null })}
             placeholder="Nome (nameplate)"
-            className="py-1.5 text-xs"
+            dense
           />
           <div className="flex gap-2">
             <Input
@@ -2725,7 +2729,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 updateSelectedToken({ hp_current: e.target.value === "" ? null : Number(e.target.value) })
               }
               placeholder="PV atual"
-              className="min-w-0 flex-1 py-1.5 text-xs"
+              dense
+              className="min-w-0 flex-1"
             />
             <Input
               type="number"
@@ -2734,7 +2739,8 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 updateSelectedToken({ hp_max: e.target.value === "" ? null : Number(e.target.value) })
               }
               placeholder="PV máximo"
-              className="min-w-0 flex-1 py-1.5 text-xs"
+              dense
+              className="min-w-0 flex-1"
             />
           </div>
           <Select
@@ -2745,7 +2751,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               if (cat) patch.size = grid.size * SIZE_CATEGORY_MULTIPLIER[cat];
               updateSelectedToken(patch);
             }}
-            className="py-1.5 text-xs"
+            dense
           >
             <option value="">Tamanho livre</option>
             {(Object.keys(SIZE_CATEGORY_LABELS) as SizeCategory[]).map((cat) => (
@@ -2754,18 +2760,22 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               </option>
             ))}
           </Select>
-          <label className="flex items-center justify-between text-xs text-text-muted">
+          <label className="flex items-center justify-between gap-3 text-sm text-text">
             Corte circular
             <input
               type="checkbox"
+              role="switch"
+              className="switch"
               checked={selectedToken.circle_crop}
               onChange={(e) => updateSelectedToken({ circle_crop: e.target.checked })}
             />
           </label>
-          <label className="flex items-center justify-between text-xs text-text-muted">
+          <label className="flex items-center justify-between gap-3 text-sm text-text">
             Emite luz
             <input
               type="checkbox"
+              role="switch"
+              className="switch"
               checked={selectedToken.emits_light}
               onChange={(e) => updateSelectedToken({ emits_light: e.target.checked })}
             />
@@ -2787,32 +2797,38 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 });
               }}
               placeholder="Raio de luz (metros)"
-              className="py-1.5 text-xs"
+              dense
             />
           )}
           <div className="flex flex-col gap-2 border-t border-border-soft pt-2">
             {iAmDm && (
-              <label className="flex items-center justify-between text-xs text-text-muted">
+              <label className="flex items-center justify-between gap-3 text-sm text-text">
                 Esconder dos jogadores
                 <input
                   type="checkbox"
+                  role="switch"
+                  className="switch"
                   checked={selectedToken.hidden_from_players}
                   onChange={(e) => updateSelectedToken({ hidden_from_players: e.target.checked })}
                 />
               </label>
             )}
-            <label className="flex items-center justify-between text-xs text-text-muted">
+            <label className="flex items-center justify-between gap-3 text-sm text-text">
               Bloquear para jogadores
               <input
                 type="checkbox"
+                role="switch"
+                className="switch"
                 checked={selectedToken.restricted_to_dm}
                 onChange={(e) => updateSelectedToken({ restricted_to_dm: e.target.checked })}
               />
             </label>
-            <label className="flex items-center justify-between text-xs text-text-muted">
+            <label className="flex items-center justify-between gap-3 text-sm text-text">
               Travar token (ninguém move, nem o mestre)
               <input
                 type="checkbox"
+                role="switch"
+                className="switch"
                 checked={selectedToken.locked}
                 onChange={(e) => updateSelectedToken({ locked: e.target.checked })}
               />
@@ -2822,14 +2838,14 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {selectedTokensEditable.length > 0 && (
-        <div className="absolute right-4 top-16 flex w-80 flex-col gap-3 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
+        <div className="absolute right-4 top-16 flex w-80 flex-col gap-3 rounded-md panel-float p-4">
           <div className="flex items-center justify-between">
-            <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+            <span className="text-[15px] font-semibold text-text">
               {selectedTokensEditable.length} tokens selecionados
             </span>
             <button
               type="button"
-              className="text-[10px] font-bold uppercase text-danger hover:text-danger/80"
+              className="cursor-pointer text-xs text-danger hover:underline"
               onClick={() => {
                 const ids = new Set(selectedTokensEditable.map((t) => t.id));
                 setTokens((prev) => prev.filter((t) => !ids.has(t.id)));
@@ -2843,7 +2859,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               Remover todos
             </button>
           </div>
-          <p className="text-[10px] text-text-faint">
+          <p className="text-xs leading-snug text-text-faint">
             Aplica a propriedade escolhida a todos os tokens selecionados que você pode editar.
           </p>
           <Select
@@ -2854,7 +2870,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
               if (cat) patch.size = grid.size * SIZE_CATEGORY_MULTIPLIER[cat];
               updateSelectedTokens(patch);
             }}
-            className="py-1.5 text-xs"
+            dense
           >
             <option value="" disabled>
               Definir tamanho...
@@ -2870,42 +2886,42 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             <button
               type="button"
               onClick={() => updateSelectedTokens({ circle_crop: true })}
-              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+              className="cursor-pointer rounded-sm bg-hairline px-3 py-2 text-left text-xs text-text transition hover:bg-surface-3"
             >
               Ativar corte circular
             </button>
             <button
               type="button"
               onClick={() => updateSelectedTokens({ circle_crop: false })}
-              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+              className="cursor-pointer rounded-sm bg-hairline px-3 py-2 text-left text-xs text-text transition hover:bg-surface-3"
             >
               Desativar corte circular
             </button>
             <button
               type="button"
               onClick={() => updateSelectedTokens({ restricted_to_dm: true })}
-              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+              className="cursor-pointer rounded-sm bg-hairline px-3 py-2 text-left text-xs text-text transition hover:bg-surface-3"
             >
               Bloquear para jogadores
             </button>
             <button
               type="button"
               onClick={() => updateSelectedTokens({ restricted_to_dm: false })}
-              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+              className="cursor-pointer rounded-sm bg-hairline px-3 py-2 text-left text-xs text-text transition hover:bg-surface-3"
             >
               Desbloquear para jogadores
             </button>
             <button
               type="button"
               onClick={() => updateSelectedTokens({ locked: true })}
-              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+              className="cursor-pointer rounded-sm bg-hairline px-3 py-2 text-left text-xs text-text transition hover:bg-surface-3"
             >
               Travar tokens
             </button>
             <button
               type="button"
               onClick={() => updateSelectedTokens({ locked: false })}
-              className="rounded-sm border border-border-soft px-2.5 py-1.5 text-left text-xs text-text-muted transition hover:text-text"
+              className="cursor-pointer rounded-sm bg-hairline px-3 py-2 text-left text-xs text-text transition hover:bg-surface-3"
             >
               Destravar tokens
             </button>
@@ -2914,13 +2930,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {iAmDm && selectedWallIds.size > 0 && (
-        <div className="absolute left-4 bottom-20 flex items-center gap-3 rounded-md border border-border-soft bg-surface/95 px-4 py-2.5 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-4 bottom-20 flex items-center gap-3 rounded-md panel-float px-4 py-2.5">
+          <span className="text-[15px] font-semibold text-text">
             {selectedWallIds.size} {selectedWallIds.size === 1 ? "parede selecionada" : "paredes selecionadas"}
           </span>
           <button
             type="button"
-            className="text-[10px] font-bold uppercase text-danger hover:text-danger/80"
+            className="cursor-pointer text-xs text-danger hover:underline"
             onClick={() => {
               for (const w of walls) {
                 if (selectedWallIds.has(w.id)) deleteWall(w);
@@ -2934,17 +2950,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {pendingNotePos && (
-        <div className="absolute left-1/2 top-16 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-1/2 top-16 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md panel-float p-4">
+          <span className="text-[15px] font-semibold text-text">
             Nova anotação
           </span>
-          <textarea
+          <Textarea
             autoFocus
             value={pendingNoteText}
             onChange={(e) => setPendingNoteText(e.target.value)}
             rows={3}
             placeholder="Texto da anotação"
-            className="rounded-sm border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
           />
           <div className="flex gap-1">
             {NOTE_ICON_CHOICES.map((icon) => {
@@ -2954,10 +2969,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                   key={icon}
                   type="button"
                   onClick={() => setPendingNoteIcon(icon)}
-                  className={`flex h-7 w-7 items-center justify-center rounded-sm border transition ${
+                  className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm border transition ${
                     pendingNoteIcon === icon
-                      ? "border-accent bg-accent-soft text-accent-strong"
-                      : "border-border-soft text-text-muted hover:text-text"
+                      ? "border-accent text-accent-strong ring-1 ring-accent"
+                      : "border-border text-text hover:border-text-faint"
                   }`}
                 >
                   <Icon size={14} />
@@ -2966,10 +2981,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             })}
           </div>
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" className="text-xs" onClick={() => setPendingNotePos(null)}>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setPendingNotePos(null)}>
               Cancelar
             </Button>
-            <Button type="button" className="text-xs" onClick={confirmPendingNote}>
+            <Button type="button" size="sm" onClick={confirmPendingNote}>
               Criar
             </Button>
           </div>
@@ -2977,17 +2992,16 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
       )}
 
       {openNote && (
-        <div className="absolute left-1/2 top-16 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md border border-border-soft bg-surface/95 p-4 backdrop-blur">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <div className="absolute left-1/2 top-16 flex w-80 -translate-x-1/2 flex-col gap-2 rounded-md panel-float p-4">
+          <span className="text-[15px] font-semibold text-text">
             Anotação
           </span>
           {iAmDm ? (
             <>
-              <textarea
+              <Textarea
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
                 rows={3}
-                className="rounded-sm border border-border bg-surface-2 px-3.5 py-2.5 text-sm text-text outline-none transition focus:border-accent focus:ring-1 focus:ring-accent"
               />
               <div className="flex gap-1">
                 {NOTE_ICON_CHOICES.map((icon) => {
@@ -2997,10 +3011,10 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                       key={icon}
                       type="button"
                       onClick={() => setNoteDraftIcon(icon)}
-                      className={`flex h-7 w-7 items-center justify-center rounded-sm border transition ${
+                      className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-sm border transition ${
                         noteDraftIcon === icon
-                          ? "border-accent bg-accent-soft text-accent-strong"
-                          : "border-border-soft text-text-muted hover:text-text"
+                          ? "border-accent text-accent-strong ring-1 ring-accent"
+                          : "border-border text-text hover:border-text-faint"
                       }`}
                     >
                       <Icon size={14} />
@@ -3009,13 +3023,13 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
                 })}
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="danger" className="text-xs" onClick={() => deleteNote(openNote)}>
+                <Button type="button" variant="danger" size="sm" onClick={() => deleteNote(openNote)}>
                   Apagar
                 </Button>
-                <Button type="button" variant="ghost" className="text-xs" onClick={() => setOpenNoteId(null)}>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setOpenNoteId(null)}>
                   Cancelar
                 </Button>
-                <Button type="button" className="text-xs" onClick={() => saveNoteDraft(openNote)}>
+                <Button type="button" size="sm" onClick={() => saveNoteDraft(openNote)}>
                   Salvar
                 </Button>
               </div>
@@ -3024,7 +3038,7 @@ function VttViewContent({ tabletopId }: { tabletopId: string }) {
             <>
               <p className="whitespace-pre-wrap text-sm">{openNote.text}</p>
               <div className="flex justify-end">
-                <Button type="button" variant="ghost" className="text-xs" onClick={() => setOpenNoteId(null)}>
+                <Button type="button" variant="ghost" size="sm" onClick={() => setOpenNoteId(null)}>
                   Fechar
                 </Button>
               </div>
