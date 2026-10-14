@@ -157,28 +157,29 @@ export function AssetDock<T extends DockItem>({
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 flex max-h-[45vh] flex-col gap-2 border-t border-border-soft bg-surface/95 backdrop-blur">
+    <div className="absolute inset-x-2 bottom-2 flex max-h-[45vh] flex-col gap-2 rounded-lg panel-float md:inset-x-4 md:bottom-4">
       <div className="flex items-center gap-2 px-4 pt-3">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-wide text-text-muted">
+        <span className="hidden truncate text-[13px] font-semibold text-text lg:inline">
           {title}
         </span>
         <div className="relative ml-2 flex-1 max-w-xs">
-          <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-text-faint" />
+          <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar..."
-            className="w-full py-1.5 pl-7 text-xs"
+            dense
+            className="w-full pl-8"
           />
         </div>
         {canUpload && (
           <Button
             type="button"
-            variant="secondary"
-            className="px-2.5 py-1.5 text-xs"
+            variant="tertiary"
+            size="sm"
             onClick={() => setUploadOpen((v) => !v)}
           >
-            <Plus size={13} className="inline -mt-0.5 mr-1" />
+            <Plus size={13} />
             Adicionar
           </Button>
         )}
@@ -193,16 +194,16 @@ export function AssetDock<T extends DockItem>({
               value={uploadName}
               onChange={(e) => setUploadName(e.target.value)}
               placeholder="usa o nome do arquivo"
-              className="py-1.5 text-xs"
+              dense
             />
           </label>
           <input
             ref={fileRef}
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif"
-            className="max-w-[12rem] text-xs text-text-muted file:mr-2 file:rounded-sm file:border-0 file:bg-surface-2 file:px-2.5 file:py-1.5 file:text-xs file:font-semibold file:text-text hover:file:bg-surface"
+            className="max-w-[12rem] text-xs text-text-muted file:mr-2 file:cursor-pointer file:rounded-full file:border-0 file:bg-surface-3/70 file:px-3 file:py-1 file:text-xs file:font-medium file:text-text hover:file:bg-surface-3"
           />
-          <Button type="submit" disabled={uploading} className="px-3 py-1.5 text-xs">
+          <Button type="submit" disabled={uploading} size="sm">
             {uploading ? "Enviando..." : "Enviar"}
           </Button>
           <FieldError>{uploadError}</FieldError>
@@ -218,8 +219,8 @@ export function AssetDock<T extends DockItem>({
         <button
           type="button"
           onClick={() => setActiveFolderId(ALL)}
-          className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition ${
-            activeFolderId === ALL ? "bg-accent text-on-accent" : "bg-surface-2 text-text-muted hover:text-text"
+          className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-medium transition ${
+            activeFolderId === ALL ? "bg-text text-surface" : "bg-surface-3/70 text-text hover:bg-surface-3"
           }`}
         >
           Tudo
@@ -231,10 +232,10 @@ export function AssetDock<T extends DockItem>({
             data-drop-target={folder.id}
             onClick={() => setActiveFolderId(folder.id)}
             title={canManageFolder(folder) ? "Clique para filtrar · arraste um item aqui para mover" : undefined}
-            className={`group flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold transition ${
+            className={`group flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-medium transition ${
               activeFolderId === folder.id || (draggingItem && dropTarget === folder.id)
-                ? "bg-accent text-on-accent"
-                : "bg-surface-2 text-text-muted hover:text-text"
+                ? "bg-text text-surface"
+                : "bg-surface-3/70 text-text hover:bg-surface-3"
             }`}
           >
             <FolderIcon size={11} />
@@ -262,7 +263,8 @@ export function AssetDock<T extends DockItem>({
                   if (!newFolderName.trim()) setCreatingFolder(false);
                 }}
                 placeholder="Nome da pasta"
-                className="w-32 py-1 text-xs"
+                dense
+                className="w-32"
               />
             </form>
           ) : (
@@ -270,7 +272,7 @@ export function AssetDock<T extends DockItem>({
               type="button"
               onClick={() => setCreatingFolder(true)}
               title="Nova pasta"
-              className="flex shrink-0 items-center justify-center rounded-full bg-surface-2 p-1.5 text-text-muted transition hover:text-text"
+              className="flex shrink-0 items-center justify-center cursor-pointer rounded-full bg-surface-3/70 p-1.5 text-text transition hover:bg-surface-3"
             >
               <Plus size={13} />
             </button>
@@ -291,7 +293,7 @@ export function AssetDock<T extends DockItem>({
             } ${
               isItemHighlighted?.(item)
                 ? "border-accent bg-accent-soft"
-                : "border-transparent hover:bg-surface-2"
+                : "border-transparent hover:bg-hairline"
             }`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -300,9 +302,9 @@ export function AssetDock<T extends DockItem>({
               alt={item.name}
               draggable={false}
               onDragStart={(e) => e.preventDefault()}
-              className="h-14 w-14 rounded-sm border border-border-soft object-cover [-webkit-user-drag:none]"
+              className="h-14 w-14 rounded-sm object-cover shadow-sm ring-1 ring-hairline [-webkit-user-drag:none]"
             />
-            <span className="w-full truncate text-center text-[10px] text-text-muted">{item.name}</span>
+            <span className="w-full truncate text-center text-[11px] text-text-muted">{item.name}</span>
             {renderBadge?.(item)}
             {canManageItem(item) && (
               <button
@@ -324,7 +326,7 @@ export function AssetDock<T extends DockItem>({
 
       {draggingItem && dragPos && (
         <div
-          className="pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-sm border border-border-soft bg-surface px-2 py-1 text-xs shadow-lg"
+          className="pointer-events-none fixed z-50 flex items-center gap-1.5 rounded-full panel-float px-2.5 py-1 text-xs"
           style={{ left: dragPos.x + 12, top: dragPos.y - 36 }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}

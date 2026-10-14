@@ -2,11 +2,11 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { LogIn } from "lucide-react";
+import { ArrowRight, LoaderCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api";
-import { Button, Card, FieldError, Input } from "@/components/ui";
+import { ChevronLink, FieldError, TextField } from "@/components/ui";
+import { AccountShell } from "@/components/AccountShell";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -30,39 +30,53 @@ export default function LoginPage() {
     }
   };
 
+  const canSubmit = usernameOrEmail.trim() !== "" && password !== "" && !submitting;
+
   return (
-    <Card className="mx-auto flex max-w-sm flex-col gap-5">
-      <h1 className="text-xl font-bold tracking-tight">Entrar</h1>
-      <form onSubmit={onSubmit} className="flex flex-col gap-4">
-        <Input
-          placeholder="Usuário ou email"
-          value={usernameOrEmail}
-          onChange={(e) => setUsernameOrEmail(e.target.value)}
-          required
-        />
-        <Input
-          placeholder="Senha"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+    <AccountShell
+      current="login"
+      title="Inicie sessão no MyTabletop."
+      subtitle="Use sua conta para entrar nas suas mesas, fichas e no Virtual Tabletop."
+    >
+      <form onSubmit={onSubmit} className="flex flex-col gap-5">
+        <div>
+          <TextField
+            label="Usuário ou e-mail"
+            position="top"
+            autoComplete="username"
+            value={usernameOrEmail}
+            onChange={(e) => setUsernameOrEmail(e.target.value)}
+            invalid={!!error}
+            required
+          />
+          <TextField
+            label="Senha"
+            type="password"
+            position="bottom"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            invalid={!!error}
+            required
+            trailing={
+              <button
+                type="submit"
+                aria-label="Iniciar sessão"
+                disabled={!canSubmit}
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-text-faint text-text-muted transition enabled:hover:border-text enabled:hover:text-text disabled:cursor-default disabled:opacity-40"
+              >
+                {submitting ? <LoaderCircle size={16} className="animate-spin" /> : <ArrowRight size={16} />}
+              </button>
+            }
+          />
+        </div>
         <FieldError>{error}</FieldError>
-        <Button
-          type="submit"
-          disabled={submitting}
-          className="flex w-full items-center justify-center gap-1.5"
-        >
-          <LogIn size={16} />
-          {submitting ? "Entrando..." : "Entrar"}
-        </Button>
       </form>
-      <p className="text-sm text-text-muted">
-        Não tem conta?{" "}
-        <Link href="/register" className="font-semibold text-accent hover:underline">
-          Cadastre-se
-        </Link>
-      </p>
-    </Card>
+
+      <div className="mt-12 flex flex-col items-center gap-2 border-t border-border-soft pt-8 text-center text-sm">
+        <span className="text-text-muted">Ainda não tem uma conta?</span>
+        <ChevronLink href="/register">Crie a sua agora</ChevronLink>
+      </div>
+    </AccountShell>
   );
 }

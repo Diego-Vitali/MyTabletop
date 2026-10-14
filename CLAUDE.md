@@ -205,16 +205,21 @@ separated from the live/editable concept.
 
 **Visual identity**: before styling anything, read the
 `mytabletop-visual-identity` skill
-(`.claude/skills/mytabletop-visual-identity/SKILL.md`) — it documents the
-design tokens (a dark, warm-pastel "greige" shell with one saturated red
-accent — deliberately single-theme; a first, all-saturated-red iteration
-was replaced after it turned out too low-contrast to read), typography, and
-the `src/components/ui.tsx` primitives (`Button`, `Input`, `Select`, `Card`,
-`Badge`, `FieldError`, `ToolbarIconButton`) that essentially every page is
-built from. Don't hand-roll styled markup or introduce raw hex colors when
-those primitives and tokens already cover the case. The VTT screen uses
-`lucide-react` for its toolbar icons (the only icon library in the
-project) — reuse it rather than adding another one or hand-drawing SVGs.
+(`.claude/skills/mytabletop-visual-identity/SKILL.md`) — the UI follows the
+apple.com design language on explicit request from the project owner
+(2026-10-14; it replaced an older "greige"/red identity), **always dark**
+— the look of Apple's dark "Pro" product pages, no light theme: black and
+graphite sections, `#f5f5f7` text, one blue action color, pill buttons,
+translucent dark-glass nav bars, full-bleed tiles, Store-style card
+shelves. The skill documents the tokens, the `type-*` typography scale,
+the materials (`glass`, `panel-float`) and the `src/components/ui.tsx`
+primitives (`Button`/`buttonClass`, `ChevronLink`, `Input`, `Select`,
+`Textarea`, `TextField`, `SegmentedControl`, `Card`, `Badge`, `Avatar`,
+`SectionHeading`, `Spinner`, `FieldError`, `ToolbarIconButton`) that
+essentially every page is built from. Don't hand-roll styled markup or
+introduce raw hex colors when those primitives and tokens already cover the
+case. `lucide-react` is the only icon library in the project — reuse it
+rather than adding another one or hand-drawing SVGs.
 
 Next.js App Router, but **auth is plain client-side JWT in `localStorage`**,
 not cookies/middleware — there is no server-side session. The pattern:
@@ -224,7 +229,11 @@ not cookies/middleware — there is no server-side session. The pattern:
 - `src/lib/auth-context.tsx` — `AuthProvider` holds `token`/`user`/`loading`
   in React state, mirrors the token to `localStorage`, and exposes
   `login`/`register`/`logout`/`refreshUser`. Wraps the whole app from
-  `src/app/layout.tsx`.
+  `src/app/layout.tsx`. Until hydration finishes it reports
+  `loading: true` / `token: null` on both server and client (via a
+  `useSyncExternalStore` "hydrated" flag) — the token only exists in
+  `localStorage`, so exposing it during the hydration pass made the
+  server and client HTML differ.
 - `src/components/RequireAuth.tsx` — client-only guard that redirects to
   `/login` when there's no authenticated user; wrap any page that needs a
   logged-in user in it (see `src/app/tabletops/page.tsx` and
@@ -242,8 +251,10 @@ not cookies/middleware — there is no server-side session. The pattern:
   rebuild of the frontend image/bundle, not just a container restart.
 
 **Route groups**: `src/app/(app)/` holds every page that gets the normal
-chrome (`NavBar` + centered `max-w-4xl` container, applied by
-`(app)/layout.tsx`). `src/app/tabletops/[id]/vtt/page.tsx` is deliberately
+chrome (`GlobalNav` on top + `SiteFooter` at the bottom, applied by
+`(app)/layout.tsx`; there's no shared content container — each page lays
+out its own full-width sections and uses the `page-container` utility
+inside them, and product-style pages add a sticky `LocalNav`). `src/app/tabletops/[id]/vtt/page.tsx` is deliberately
 **outside** that group — it only inherits the root `layout.tsx` (fonts +
 `AuthProvider`, nothing else), because the VTT is a full-viewport canvas
 with no navbar. `(app)` doesn't appear in the URL (`/tabletops` either
